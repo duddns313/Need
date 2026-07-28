@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 workspace/
 exports/
+dist/
+build/
+*.spec
