@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ '최초 설정' if first_run else '잠금 해제' }}{% endblock %}
+{% block bodyclass %}gate{% endblock %}
+
+{% block content %}
+<div class="gate-card">
+  <div class="gate-mark"><span class="rail-lamp"></span></div>
+  <h1>철도안전관리체계<br>요구사항 추적기</h1>
+
+  {% if first_run %}
+  <p class="lede">처음 실행입니다. 인증키를 등록하면 이 PC에만 암호화해서 보관합니다.
+     다음부터는 비밀번호만 입력하면 됩니다.</p>
+
+  <form method="post" class="stack">
+    <label>
+      국가법령정보 공동활용 OC 인증키
+      <input type="text" name="oc" required autocomplete="off"
+             placeholder="open.law.go.kr 에서 발급받은 값">
+      <small>아이디·비밀번호가 아니라 <b>발급받은 인증키 한 줄</b>입니다.
+             아직 없다면 open.law.go.kr에서 신청하세요(승인 1~2일).</small>
+    </label>
+
+    <label>
+      Claude API 키 <span class="opt">선택</span>
+      <input type="password" name="api_key" autocomplete="new-password"
+             placeholder="sk-ant-... (없으면 비워두세요)">
+      <small>console.anthropic.com에서 발급합니다. Claude Pro 구독과는 별도 결제입니다.
+             비워두면 키워드 매칭 모드로만 동작합니다.</small>
+    </label>
+
+    <label>
+      사용할 모델
+      <input type="text" name="model" value="{{ default_model }}" autocomplete="off">
+    </label>
+
+    <div class="pair">
+      <label>앱 비밀번호<input type="password" name="password" required minlength="4"></label>
+      <label>다시 입력<input type="password" name="password2" required minlength="4"></label>
+    </div>
+    <small class="warn">이 비밀번호는 어디에도 저장되지 않습니다. 잊으면 인증키를 다시 등록해야 합니다.</small>
+
+    <button class="primary" type="submit">등록하고 시작</button>
+  </form>
+
+  {% else %}
+  <p class="lede">앱 비밀번호를 입력하면 저장된 인증키를 불러옵니다.</p>
+  <form method="post" class="stack">
+    <label>앱 비밀번호
+      <input type="password" name="password" required autofocus>
+    </label>
+    <button class="primary" type="submit">잠금 해제</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

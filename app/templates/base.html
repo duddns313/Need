@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}요구사항 추적기{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="{% block bodyclass %}{% endblock %}">
+
+{% if unlocked %}
+<aside class="rail">
+  <div class="rail-mark">
+    <span class="rail-lamp"></span>
+    <div>
+      <strong>요구사항 추적기</strong>
+      <em>철도안전관리체계</em>
+    </div>
+  </div>
+
+  <nav>
+    <a href="{{ url_for('workspace') }}" class="{{ 'on' if request.endpoint in ('workspace','progress') }}">
+      <span class="n">1</span> 문서 올리기
+    </a>
+    <a href="{{ url_for('result', session_id=cur_session) if cur_session else '#' }}"
+       class="{{ 'on' if request.endpoint == 'result' }}">
+      <span class="n">2</span> 대조 결과
+    </a>
+    <a href="{{ url_for('recommendation', session_id=cur_session) if cur_session else '#' }}"
+       class="{{ 'on' if request.endpoint == 'recommendation' }}">
+      <span class="n">3</span> 권고사항
+    </a>
+    <a href="{{ url_for('history') }}" class="{{ 'on' if request.endpoint == 'history' }}">
+      <span class="n">4</span> 이력
+    </a>
+    <a href="{{ url_for('backup') }}" class="{{ 'on' if request.endpoint == 'backup' }}">
+      <span class="n">5</span> 백업
+    </a>
+  </nav>
+
+  <div class="rail-foot">
+    <a href="{{ url_for('settings') }}" class="quiet {{ 'on' if request.endpoint == 'settings' }}">설정</a>
+    <form method="post" action="{{ url_for('logout') }}">
+      <button class="linkish" type="submit">잠그기</button>
+    </form>
+  </div>
+</aside>
+{% endif %}
+
+<main class="{{ 'with-rail' if unlocked else 'solo' }}">
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% if msgs %}
+      <div class="flashes">
+      {% for cat, m in msgs %}<p class="flash {{ cat }}">{{ m }}</p>{% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</main>
+
+{% block script %}{% endblock %}
+</body>
+</html>

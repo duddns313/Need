@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}백업{% endblock %}
+
+{% block content %}
+<header class="page-head"><div><h1>백업</h1>
+  <p class="lede">PC가 초기화되어도 작업을 이어가려면, 내보낸 zip을 USB나 네트워크 드라이브에 두세요.</p></div>
+</header>
+
+<div class="two-col">
+  <section class="panel">
+    <h2>내보내기</h2>
+    <p>인증키(암호화 상태), 분석 결과, 법령 스냅샷, 이력이 모두 담깁니다.</p>
+    <form method="post" action="{{ url_for('backup_export') }}" class="stack">
+      <label class="check">
+        <input type="checkbox" name="include_uploads" checked>
+        업로드한 원본 문서도 포함
+      </label>
+      <button class="primary" type="submit">zip으로 내보내기 (데이터만)</button>
+    </form>
+
+    <hr>
+    {% if is_exe %}
+    <p><b>전체 내보내기</b> — 지금 실행 중인 exe 파일까지 zip에 함께 담습니다.
+       이 zip 하나만 있으면 다른 PC에서 풀어서 바로 더블클릭해 쓸 수 있습니다.</p>
+    <form method="post" action="{{ url_for('backup_export_full') }}" class="stack">
+      <label class="check">
+        <input type="checkbox" name="include_uploads" checked>
+        업로드한 원본 문서도 포함
+      </label>
+      <button class="ghost" type="submit">zip으로 내보내기 (exe 포함)</button>
+    </form>
+    {% else %}
+    <p class="opt">지금은 개발용으로 실행 중이라 exe를 포함할 수 없습니다.
+       exe로 실행할 때만 "전체 내보내기"가 나타납니다.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>가져오기</h2>
+    <p>새로 설치한 PC에서 이 zip을 올리면 이전 상태로 돌아갑니다.</p>
+    <form method="post" action="{{ url_for('backup_import') }}"
+          enctype="multipart/form-data" class="stack">
+      <input type="file" name="zipfile" accept=".zip" required>
+      <label class="check">
+        <input type="checkbox" name="replace">
+        기존 작업 내용을 지우고 덮어쓰기
+      </label>
+      <button class="ghost" type="submit">복원</button>
+    </form>
+  </section>
+</div>
+
+<section class="recent">
+  <h2>내보낸 파일</h2>
+  {% if files %}
+  <ul class="log">{% for f in files %}<li><b>{{ f.name }}</b> <span>{{ f.size }}</span></li>{% endfor %}</ul>
+  <p class="empty">프로그램 폴더의 <code>exports</code> 안에 있습니다.</p>
+  {% else %}
+  <p class="empty">아직 내보낸 백업이 없습니다.</p>
+  {% endif %}
+</section>
+{% endblock %}

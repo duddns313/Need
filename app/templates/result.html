@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}대조 결과{% endblock %}
+
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>대조 결과</h1>
+    <p class="lede">{{ d.saved_at }} · {{ 'AI 분석' if d.mode == 'ai' else '키워드 매칭' }}
+       · <code class="sid">{{ d.session_id }}</code></p>
+  </div>
+  <div class="head-side"><button class="ghost" onclick="window.print()">인쇄 / PDF 저장</button></div>
+</header>
+
+{% set c = d.counts %}
+<section class="board">
+  {% for key in ['outdated', 'missing', 'review', 'notfound', 'ok'] %}
+  <button class="board-cell {{ meta[key][1] }} {{ 'zero' if not c.get(key) }}"
+          data-filter="{{ key }}">
+    <span class="lamp"></span>
+    <b>{{ c.get(key, 0) }}</b>
+    <em>{{ meta[key][0] }}</em>
+  </button>
+  {% endfor %}
+  <button class="board-cell all" data-filter="all"><b>{{ c.total }}</b><em>전체</em></button>
+</section>
+
+{% if c.changed %}
+<p class="banner">직전 확인 이후 <b>{{ c.changed }}건</b>이 개정되었습니다.</p>
+{% endif %}
+
+{% if d.read_issues %}
+<details class="issues">
+  <summary>읽지 못한 파일 {{ d.read_issues|length }}개</summary>
+  <ul>{% for i in d.read_issues %}<li><b>{{ i.file }}</b> — {{ i.note }}</li>{% endfor %}</ul>
+</details>
+{% endif %}
+
+{% if d.uncarded %}
+<details class="issues" open>
+  <summary>관리카드에 없는데 내규가 인용하는 법령 후보 {{ d.uncarded|length }}건</summary>
+  <p class="hint">내규 문서에서 「」로 정확히 인용된 이름만 모았습니다. 실제로 관리가 필요한
+     항목이면 요구사항 관리카드에 추가해주세요. (내부 문서·서식 인용은 자동으로 제외했지만
+     완벽하지 않을 수 있습니다.)</p>
+  <ul>
+    {% for u in d.uncarded %}
+    <li><b>{{ u.name }}</b> — 출처: {{ u.source_files|join(', ') }}</li>
+    {% endfor %}
+  </ul>
+</details>
+{% endif %}
+
+<section class="rows" id="rows">
+  {% for r in rows %}
+  {% set rec = r.record %}
+  <article class="row {{ meta[r.status][1] }}" data-status="{{ r.status }}">
+    <span class="lamp"></span>
+
+    <div class="row-main">
+      <div class="row-top">
+        {% if r.reference.code %}<span class="chip">{{ r.reference.code }}</span>{% endif %}
+        <h3>{{ rec.name if rec else r.reference.name }}</h3>
+        {% if rec %}<span class="chip">{{ rec.target_label }}</span>{% endif %}
+        {% if r.changed %}<span class="chip alarm">개정 발생</span>{% endif %}
+        {% if r.pending|default([]) %}<span class="chip alarm">시행예정 있음</span>{% endif %}
+        <span class="verdict">{{ meta[r.status][0] }}</span>
+      </div>
+
+      <p class="headline">{{ r.headline }}</p>
+      {% if r.detail %}<p class="detail">{{ r.detail }}</p>{% endif %}
+      {% if r.action %}<p class="action">▸ {{ r.action }}</p>{% endif %}
+      {% if r.pending|default([]) %}
+      <p class="pending-note">
+        시행예정: {% for p in r.pending %}{{ p.effective }}부 개정{% if p.promulgated %} (공포 {{ p.promulgated }}){% endif %}{% if not loop.last %} · {% endif %}{% endfor %}
+      </p>
+      {% endif %}
+
+      {% if rec %}
+      <dl class="facts">
+        <div><dt>시행일</dt><dd>{{ rec.effective or '—' }}</dd></div>
+        <div><dt>공포·발령</dt><dd>{{ rec.promulgated or '—' }}</dd></div>
+        <div><dt>제·개정</dt><dd>{{ rec.revision or '—' }}</dd></div>
+        <div><dt>소관</dt><dd>{{ rec.ministry or '—' }}</dd></div>
+        {% if r.reference.dept %}<div><dt>관련부서</dt><dd>{{ r.reference.dept }}</dd></div>{% endif %}
+        {% if r.reference.due_date %}<div><dt>개정예정일</dt><dd>{{ r.reference.due_date }}</dd></div>{% endif %}
+      </dl>
+      {% if r.previous and r.changed %}
+      <p class="was">직전 확인 시: 시행 {{ r.previous.effective or '—' }}
+         / 공포 {{ r.previous.promulgated or '—' }} ({{ r.previous.seen_at }})</p>
+      {% endif %}
+      {% endif %}
+
+      {% set matches = r.internal_matches|default([]) %}
+      {% if r.reference.related_internal %}
+      <ul class="chips">
+        {% for m in matches[:8] %}
+        <li class="{{ 'found' if m.file else 'missing' }}">
+          {{ m.name }}{% if m.file %} — 업로드됨 ({{ m.file }}){% else %} — 업로드 안 됨{% endif %}
+        </li>
+        {% endfor %}
+        {% if matches|length > 8 %}
+        <li class="muted">외 {{ matches|length - 8 }}건 더</li>
+        {% endif %}
+      </ul>
+      {% endif %}
+
+      {% if r.internal_excerpt %}
+      <details class="excerpt">
+        <summary>{{ r.internal_excerpt.file }}에서 발췌한 관련 부분</summary>
+        <pre>{{ r.internal_excerpt.text }}</pre>
+      </details>
+      {% endif %}
+
+      <p class="src">
+        {% if r.reference.articles %}참조 조문 {{ r.reference.articles|join(', ') }} · {% endif %}
+        출처 {{ r.reference.source_files|join(', ') }}
+        {% if rec and rec.detail_url %}
+          · <a href="https://www.law.go.kr{{ rec.detail_url }}" target="_blank" rel="noopener">원문 열기</a>
+        {% endif %}
+      </p>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}
+
+{% block script %}
+<script>
+document.querySelectorAll('.board-cell').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const f = btn.dataset.filter;
+    document.querySelectorAll('.board-cell').forEach(b => b.classList.remove('picked'));
+    btn.classList.add('picked');
+    document.querySelectorAll('.row').forEach(row => {
+      row.hidden = !(f === 'all' || row.dataset.status === f);
+    });
+  });
+});
+</script>
+{% endblock %}

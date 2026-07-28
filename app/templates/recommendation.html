@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}권고사항{% endblock %}
+
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>권고사항</h1>
+    <p class="lede">{{ d.saved_at }} · 조치가 필요한 {{ rows|length }}건만 모았습니다.
+       법령 개정사항과 내규 반영 권고를 나란히 비교합니다.</p>
+  </div>
+  <div class="head-side">
+    <a class="ghost" href="{{ url_for('result', session_id=d.session_id) }}">전체 대조 결과로</a>
+    <button class="ghost" onclick="window.print()">인쇄 / PDF 저장</button>
+  </div>
+</header>
+
+{% if not rows %}
+<p class="empty">조치가 필요한 항목이 없습니다.</p>
+{% else %}
+<div class="recent cmp-wrap">
+<table>
+  <colgroup>
+    <col style="width:7%"><col style="width:16%"><col style="width:8%">
+    <col style="width:23%"><col style="width:23%"><col style="width:15%"><col style="width:8%">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>관리번호</th><th>요구사항(법령)</th><th>담당</th>
+      <th>법령 개정사항 (Before)</th>
+      <th>반영 권고 (After)</th>
+      <th>관련 내규</th>
+      <th>개정예정일</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    {% set ref = r.reference %}
+    {% set pending = r.pending|default([]) %}
+    <tr>
+      <td><code>{{ ref.code or '—' }}</code></td>
+      <td>
+        <b>{{ ref.name }}</b>
+        <span class="verdict {{ meta[r.status][1] }}-text">{{ meta[r.status][0] }}</span>
+        {% if r.record %}<div class="muted">시행일 {{ r.record.effective or '—' }}</div>{% endif %}
+        {% if pending %}
+        <div class="pending-note">시행예정
+          {% for p in pending %}{{ p.effective }}{% if not loop.last %}, {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+      </td>
+      <td>{{ ref.dept or '—' }}</td>
+      <td>{{ ref.revision_change or r.detail or '—' }}</td>
+      <td>
+        {{ ref.recommendation or r.action or '—' }}
+        {% if r.internal_excerpt %}
+        <details class="excerpt">
+          <summary>{{ r.internal_excerpt.file }} 발췌</summary>
+          <pre>{{ r.internal_excerpt.text }}</pre>
+        </details>
+        {% endif %}
+      </td>
+      <td>
+        {% set matches = r.internal_matches|default([]) %}
+        {% if ref.related_internal %}
+        <ul class="chips">
+          {% for m in matches[:8] %}
+          <li class="{{ 'found' if m.file else 'missing' }}">
+            {{ m.name }}{% if m.file %} ✓{% else %} ✗ 업로드 안 됨{% endif %}
+          </li>
+          {% endfor %}
+          {% if matches|length > 8 %}
+          <li class="muted">외 {{ matches|length - 8 }}건 더</li>
+          {% endif %}
+        </ul>
+        {% else %}—{% endif %}
+      </td>
+      <td>{{ ref.due_date or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

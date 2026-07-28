@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}설정{% endblock %}
+
+{% block content %}
+<header class="page-head"><div><h1>설정</h1>
+  <p class="lede">인증키는 앱 비밀번호로 암호화되어 이 PC에만 저장됩니다.</p></div>
+</header>
+
+<section class="panel narrow">
+  <div class="kv">
+    <div><span>OC 인증키</span><code>{{ oc_mask or '미등록' }}</code></div>
+    <div><span>Claude API 키</span><code>{{ api_mask or '미등록' }}</code></div>
+    <div><span>모델</span><code>{{ model }}</code></div>
+  </div>
+
+  <p class="ping"><button class="ghost" id="ping" type="button">법령정보센터 연결 확인</button>
+     <span id="ping-out"></span></p>
+
+  <h2>변경</h2>
+  <p class="hint">바꿀 항목만 채우세요. 비워둔 항목은 그대로 유지됩니다.</p>
+  <form method="post" class="stack">
+    <label>OC 인증키<input type="text" name="oc" autocomplete="off" placeholder="변경할 때만 입력"></label>
+    <label>Claude API 키
+      <input type="password" name="api_key" autocomplete="new-password" placeholder="변경할 때만 입력">
+      <small>console.anthropic.com에서 발급합니다. Claude Pro 구독 계정과는 별개입니다.</small>
+    </label>
+    <label class="check"><input type="checkbox" name="clear_api"> API 키 삭제 (키워드 모드만 사용)</label>
+    <label>모델<input type="text" name="model" placeholder="{{ model }}" autocomplete="off"></label>
+    <hr>
+    <label>확인을 위해 현재 앱 비밀번호<input type="password" name="password" required></label>
+    <button class="primary" type="submit">저장</button>
+  </form>
+</section>
+{% endblock %}
+
+{% block script %}
+<script>
+document.getElementById('ping').addEventListener('click', async (e) => {
+  const out = document.getElementById('ping-out');
+  e.target.disabled = true; out.textContent = '확인 중…';
+  try {
+    const d = await (await fetch('/api/ping-law')).json();
+    out.textContent = d.message;
+    out.className = d.ok ? 'clear-text' : 'stop-text';
+  } catch (err) { out.textContent = '요청 실패: ' + err; out.className = 'stop-text'; }
+  e.target.disabled = false;
+});
+</script>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}이력{% endblock %}
+
+{% block content %}
+<header class="page-head"><div><h1>이력</h1>
+  <p class="lede">언제 무엇을 확인했는지 남겨둡니다. 감사·심사 대응 시 근거로 쓸 수 있습니다.</p></div>
+</header>
+
+<section class="recent">
+  <h2>분석 세션</h2>
+  {% if sessions %}
+  <table>
+    <tr><th>세션</th><th>시각</th><th>방식</th><th>항목</th><th>조치 필요</th><th></th></tr>
+    {% for s in sessions %}
+    <tr>
+      <td><code>{{ s.session_id }}</code></td>
+      <td>{{ s.saved_at }}</td>
+      <td>{{ 'AI' if s.mode == 'ai' else '카드 판정' }}</td>
+      <td>{{ s.total }}</td>
+      <td>{% if s.attention %}<b class="stop-text">{{ s.attention }}</b>{% else %}0{% endif %}</td>
+      <td><a href="{{ url_for('result', session_id=s.session_id) }}">결과</a>
+          · <a href="{{ url_for('recommendation', session_id=s.session_id) }}">권고</a></td>
+    </tr>
+    {% if s.highlights %}
+    <tr class="hl-row">
+      <td></td>
+      <td colspan="5">
+        <ul class="hl-list">
+          {% for h in s.highlights %}
+          <li><b>{{ h.name }}</b>{% if h.effective %} · 시행일 {{ h.effective }}{% endif %}
+              {% if h.recommendation %} — {{ h.recommendation }}{% endif %}</li>
+          {% endfor %}
+          {% if s.highlights_more %}
+          <li class="muted">외 {{ s.highlights_more }}건 더 —
+            <a href="{{ url_for('recommendation', session_id=s.session_id) }}">권고사항 탭에서 전체 보기</a></li>
+          {% endif %}
+        </ul>
+      </td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="empty">아직 분석 기록이 없습니다. 문서를 올리고 분석을 실행해보세요.</p>
+  {% endif %}
+</section>
+
+<section class="recent">
+  <h2>활동 로그</h2>
+  {% if events %}
+  <ul class="log">
+    {% for e in events %}
+    <li><time>{{ e.at }}</time> <b>{{ e.event }}</b>
+      <span>{% for k, v in e.items() if k not in ('at', 'event') %}{{ k }}={{ v }} {% endfor %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">기록된 활동이 없습니다.</p>
+  {% endif %}
+</section>
+{% endblock %}

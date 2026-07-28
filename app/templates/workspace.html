@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}문서 올리기{% endblock %}
+
+{% block content %}
+<header class="page-head">
+  <div>
+    <h1>문서 올리기</h1>
+    <p class="lede">여기 올린 문서는 <b>계속 보관</b>됩니다 — 다음에 로그인해도 다시 올릴 필요 없습니다.
+       분기가 바뀌어 새 자료가 나오면, 기존 파일을 지우고 새로 올려주세요.</p>
+  </div>
+</header>
+
+{% set counts = {'cards': files['cards']|length,
+                 'domain': files['domain']|length,
+                 'internal': files['internal']|length} %}
+
+<div class="drops">
+  {% for key, label in categories.items() %}
+  <section class="drop {{ 'filled' if counts[key] else '' }}">
+    <div class="drop-head">
+      <span class="tag">{{ loop.index }}</span>
+      <h2>{{ label }}</h2>
+      <span class="count">{{ counts[key] }}개</span>
+    </div>
+
+    <p class="hint">
+      {% if key == 'cards' %}회사가 관리 중인 요구사항 관리카드 전체(엑셀). 새 분기 자료가 오면
+         기존 파일을 지우고 새로 올려주세요 — 분석은 항상 지금 여기 있는 파일 기준으로 돕니다.
+      {% elif key == 'domain' %}분야별 요구사항 관리 문서. <b>.hwpx</b>가 가장 잘 읽힙니다.
+      {% else %}내부 안전관리체계 매뉴얼, 사규, 절차서. 대조 기준이 되는 문서입니다.
+      {% endif %}
+    </p>
+
+    <form method="post" action="{{ url_for('upload', category=key) }}"
+          enctype="multipart/form-data" class="upload-form">
+      <input type="file" name="files" multiple>
+      <button class="ghost" type="submit">추가</button>
+    </form>
+
+    {% if files[key] %}
+    <ul class="filelist">
+      {% for p in files[key] %}
+      <li>
+        <span>{{ p.name }}</span>
+        <form method="post" action="{{ url_for('remove_upload', category=key) }}">
+          <input type="hidden" name="filename" value="{{ p.name }}">
+          <button class="x" type="submit" title="삭제">✕</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+<section class="runbar">
+  <form method="post" action="{{ url_for('analyze') }}" class="run-form">
+    <fieldset class="modes">
+      <legend>분석 방식</legend>
+      <label class="mode">
+        <input type="radio" name="mode" value="keyword" checked>
+        <div>
+          <strong>카드 기준 판정</strong>
+          <em>무료. 관리카드에 기재된 '개정 필요여부'를 기준으로 판정합니다.</em>
+        </div>
+      </label>
+      <label class="mode {{ '' if has_api else 'disabled' }}">
+        <input type="radio" name="mode" value="ai" {{ '' if has_api else 'disabled' }}>
+        <div>
+          <strong>AI 분석</strong>
+          <em>{% if has_api %}Claude가 내부규정 발췌본을 직접 읽고 판정을 보완합니다. 호출 비용이 발생합니다.
+              {% else %}설정 화면에서 Claude API 키를 등록하면 사용할 수 있습니다.{% endif %}</em>
+        </div>
+      </label>
+    </fieldset>
+
+    <button class="primary big" type="submit" {{ 'disabled' if not counts['cards'] }}>
+      분석 시작
+    </button>
+  </form>
+
+  <p class="foot-note">
+    {% if not counts['cards'] %}
+      ① 요구사항 관리카드(엑셀)를 올려야 분석할 수 있습니다. 관리 대상은 이 엑셀 기준으로 정합니다.
+    {% elif not counts['internal'] %}
+      ③ 내부규정이 없으면 최신 법령 조회까지만 하고 내부 반영 여부는 판단하지 않습니다.
+    {% else %}
+      지원 형식: {{ supported }}
+    {% endif %}
+  </p>
+</section>
+
+{% if recent %}
+<section class="recent">
+  <h2>최근 분석</h2>
+  <table>
+    <tr><th>세션</th><th>시각</th><th>방식</th><th>항목</th><th>조치 필요</th><th></th></tr>
+    {% for s in recent %}
+    <tr>
+      <td><code>{{ s.session_id }}</code></td>
+      <td>{{ s.saved_at }}</td>
+      <td>{{ 'AI' if s.mode == 'ai' else '카드 판정' }}</td>
+      <td>{{ s.total }}</td>
+      <td>{% if s.attention %}<b class="stop-text">{{ s.attention }}</b>{% else %}0{% endif %}</td>
+      <td><a href="{{ url_for('result', session_id=s.session_id) }}">열기</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+{% endblock %}

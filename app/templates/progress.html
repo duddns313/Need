@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}분석 중{% endblock %}
+
+{% block content %}
+<header class="page-head"><div><h1>분석 중</h1>
+  <p class="lede">문서를 읽고, 법령정보센터에서 최신본을 확인하고, 내부규정과 대조합니다.</p></div>
+</header>
+
+<section class="progress-card">
+  <p class="phase" id="phase">준비 중</p>
+  <div class="bar"><div class="fill" id="fill" style="width:0%"></div></div>
+  <p class="ratio" id="ratio"></p>
+  <ul class="tail" id="tail"></ul>
+  <p class="err" id="err" hidden></p>
+  <a class="primary" id="go" href="{{ url_for('result', session_id=sid) }}" hidden>결과 보기</a>
+</section>
+{% endblock %}
+
+{% block script %}
+<script>
+const sid = {{ sid|tojson }};
+const $ = id => document.getElementById(id);
+
+async function tick() {
+  let d;
+  try { d = await (await fetch(`/api/progress/${sid}`)).json(); }
+  catch { return setTimeout(tick, 1500); }
+
+  $('phase').textContent = d.phase || '';
+  if (d.total) {
+    $('fill').style.width = Math.round(d.done / d.total * 100) + '%';
+    $('ratio').textContent = `${d.done} / ${d.total}`;
+  }
+  $('tail').innerHTML = (d.log || []).map(l => `<li>${l}</li>`).join('');
+
+  if (d.error) {
+    $('err').hidden = false;
+    $('err').textContent = d.error;
+    $('phase').textContent = '중단됨';
+    return;
+  }
+  if (d.finished) {
+    $('fill').style.width = '100%';
+    $('go').hidden = false;
+    return;
+  }
+  setTimeout(tick, 1200);
+}
+tick();
+</script>
+{% endblock %}
