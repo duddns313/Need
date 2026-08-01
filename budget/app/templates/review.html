@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% set page = 'review' %}
+{% block content %}
+
+<h1>정리하기</h1>
+<p class="sub">
+  {% if pending %}
+    아직 {{ pending }}건이 어디에 쓴 돈인지 모릅니다. 아래에서 채우면 됩니다.
+  {% else %}
+    전부 분류됐습니다. 대시보드에서 확인하세요.
+  {% endif %}
+</p>
+
+<section class="card">
+  <h2>자동으로 채우기</h2>
+  <p class="note">먼저 눌러보세요. 대부분 여기서 끝납니다.</p>
+  <div class="actions">
+    <form method="post" action="{{ url_for('review_lookup') }}">
+      <button type="submit" {{ 'disabled' if not lookup_ready or not pending }}>
+        지도에서 업종 찾기
+      </button>
+    </form>
+    <form method="post" action="{{ url_for('review_ai') }}">
+      <button class="ghost" type="submit" {{ 'disabled' if not ai_ready or not pending }}>
+        Claude에게 물어보기
+      </button>
+    </form>
+    {% if not lookup_ready %}
+      <span style="font-size:12.5px;color:var(--muted)">
+        지도 조회를 쓰려면 <a href="{{ url_for('settings_page') }}">설정</a>에서 카카오 키를 넣으세요.
+      </span>
+    {% endif %}
+  </div>
+</section>
+
+{% if promoted %}
+<section class="card">
+  <h2>급여로 올린 것</h2>
+  <p class="note">뱅크샐러드가 급여를 '금융수입'이나 '미분류'로 주는 경우가 있어, 금액과 반복 횟수를 보고 급여로 올렸습니다.</p>
+  {% for row in promoted %}
+    <div class="qrow">
+      <div>
+        <div class="who">💰 {{ row.content }}</div>
+        <div class="meta">{{ row.owner }} · {{ '{:,}'.format(row.count) }}건 · ₩{{ '{:,}'.format(row.amount) }}</div>
+      </div>
+      <form method="post" action="{{ url_for('review_set') }}">
+        <input type="hidden" name="content" value="{{ row.content }}">
+        <select name="category">
+          <option value="급여" selected>급여</option>
+          <option value="부수입">부수입</option>
+          <option value="금융소득">금융소득</option>
+          <option value="부부간이체">부부간이체(제외)</option>
+        </select>
+        <button class="ghost" type="submit">바꾸기</button>
+      </form>
+    </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if candidates %}
+<section class="card">
+  <h2>배우자 송금인가요?</h2>
+  <p class="note">
+    금액이 크고 반복되는 송금입니다. 배우자에게 보낸 돈이라면 지출이 아닙니다.
+    두 분 파일을 모두 올리면 자동으로 상계돼 양쪽에서 사라집니다.
+  </p>
+  {% for row in candidates %}
+    <div class="qrow">
+      <div>
+        <div class="who">🔁 {{ row.content }}</div>
+        <div class="meta">{{ row.count }}건 · ₩{{ '{:,}'.format(row.amount) }}</div>
+      </div>
+      <form method="post" action="{{ url_for('review_set') }}">
+        <input type="hidden" name="content" value="{{ row.content }}">
+        <select name="category">
+          <option value="부부간이체" selected>부부간이체(지출 아님)</option>
+          {% for c in options %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+        <button type="submit">확정</button>
+      </form>
+    </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if queue %}
+<section class="card">
+  <h2>직접 정해야 하는 것 <span style="font-weight:400;color:var(--muted)">— {{ queue|length }}개 상호</span></h2>
+  <p class="note">
+    한 번 정하면 그 상호의 과거·미래 거래가 전부 같이 바뀌고, 다음 달 파일부터는 자동입니다.
+    건수 많은 순으로 보여줍니다.
+  </p>
+  {% for row in queue %}
+    <div class="qrow">
+      <div>
+        <div class="who">{{ row.content }}</div>
+        <div class="meta">{{ row.count }}건 · ₩{{ '{:,}'.format(row.amount) }} · {{ row.owners|join(', ') }}</div>
+      </div>
+      <form method="post" action="{{ url_for('review_set') }}">
+        <input type="hidden" name="content" value="{{ row.content }}">
+        <select name="category" required>
+          <option value="" disabled selected>어디에 쓴 돈인가요?</option>
+          {% for c in options %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+        <button type="submit">확정</button>
+      </form>
+    </div>
+  {% endfor %}
+</section>
+{% else %}
+<section class="card">
+  <h2>정리할 게 없습니다</h2>
+  <p class="note">전부 분류됐습니다.</p>
+  <div class="actions"><a class="btn" href="{{ url_for('dashboard') }}">대시보드 보기</a></div>
+</section>
+{% endif %}
+
+{% endblock %}

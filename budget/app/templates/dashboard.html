@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+{% set page = 'dashboard' %}
+{% block content %}
+
+<script id="data" type="application/json">{{ data|tojson }}</script>
+
+<h1>{{ data.month[:4] }}년 {{ data.month[5:]|int }}월
+  {% if data.owner %}<span style="font-weight:400;color:var(--ink-2)">— {{ data.owner }}</span>{% endif %}
+</h1>
+<p class="sub">거래 {{ '{:,}'.format(data.n_tx) }}건 기준</p>
+
+<div class="topbar">
+  <div class="seg" role="group" aria-label="보기 대상">
+    <a class="btn ghost" style="border:0;border-radius:0"
+       href="{{ url_for('dashboard', month=data.month) }}"
+       {% if not data.owner %}aria-pressed="true"{% endif %}>부부 합산</a>
+    {% for o in data.owners %}
+      <a class="btn ghost" style="border:0;border-radius:0"
+         href="{{ url_for('dashboard', month=data.month, owner=o) }}"
+         {% if data.owner == o %}aria-pressed="true"{% endif %}>{{ o }}</a>
+    {% endfor %}
+  </div>
+
+  <form method="get" action="{{ url_for('dashboard') }}" style="display:inline">
+    {% if data.owner %}<input type="hidden" name="owner" value="{{ data.owner }}">{% endif %}
+    <select name="month" aria-label="기준월" onchange="this.form.submit()">
+      {% for m in data.months|reverse %}
+        <option value="{{ m }}" {{ 'selected' if m == data.month }}>{{ m[:4] }}년 {{ m[5:]|int }}월</option>
+      {% endfor %}
+    </select>
+  </form>
+
+  {% for o in data.owners %}
+    <span class="slot">
+      <i class="dot {{ 'on' if o in data.uploaded else 'off' }}"></i>
+      {{ o }} <b>{{ '올림' if o in data.uploaded else '미업로드' }}</b>
+    </span>
+  {% endfor %}
+
+  <a class="btn ghost" href="{{ url_for('export_xlsx') }}">엑셀 내려받기</a>
+</div>
+
+<div class="kpis" id="kpis"></div>
+
+{% if data.unclassified_n %}
+<section class="card" style="border-left:3px solid var(--warning)">
+  <h2>아직 분류 안 된 거래 {{ data.unclassified_n }}건</h2>
+  <p class="note">이만큼은 '미분류'로 잡혀 있어 카테고리별 숫자가 정확하지 않습니다.</p>
+  <div class="actions"><a class="btn" href="{{ url_for('review') }}">정리하러 가기</a></div>
+</section>
+{% endif %}
+
+<section class="card clean">
+  <h2>정제 리포트 — 뱅샐 원본에서 뺀 것</h2>
+  <p class="note">계좌 간 이체·카드대금 납부·페이 충전은 쓴 돈이 아닙니다. 이걸 빼야 진짜 지출이 보입니다.</p>
+  <div class="clean-grid" id="clean"></div>
+</section>
+
+<section class="card">
+  <h2>이번 달</h2>
+  <p class="note">수입은 주황, 지출은 파랑, 저축·투자는 초록으로 고정했습니다. 어느 화면에서든 같은 뜻입니다.</p>
+  <div class="three" id="three"></div>
+</section>
+
+<section class="card">
+  <h2>월별 추이</h2>
+  <p class="note">세 값 모두 원 단위 한 축입니다. 축을 두 개로 나누면 없는 관계가 보이므로 쓰지 않았습니다.</p>
+  <div class="legend">
+    <span><i class="key" style="background:var(--income)"></i>수입</span>
+    <span><i class="key" style="background:var(--spend)"></i>지출</span>
+    <span><i class="key" style="background:var(--save)"></i>저축·투자</span>
+  </div>
+  <figure>
+    <div id="trend"></div>
+    <figcaption>점에 마우스를 올리면 그 달 값이 나옵니다.</figcaption>
+  </figure>
+  <details>
+    <summary>표로 보기</summary>
+    <div class="scroll" id="trendtable"></div>
+  </details>
+</section>
+
+<div class="two">
+  <section class="card">
+    <h2>카테고리별 지출 — 누가 얼마나</h2>
+    <p class="note">
+      {% if data.owners|length > data.uploaded|length %}
+        나머지 한 분 파일을 올리면 같은 막대가 두 색으로 나뉩니다.
+      {% else %}
+        같은 막대 안에서 누가 얼마를 썼는지 색으로 나뉩니다.
+      {% endif %}
+    </p>
+    <div class="legend">
+      {% for o in data.owners %}
+        <span><i class="key sq" style="background:var(--spend{{ '-2' if loop.index0 else '' }})"></i>{{ o }}</span>
+      {% endfor %}
+    </div>
+    <div id="bycat"></div>
+  </section>
+
+  <section class="card">
+    <h2>고정비 · 변동비</h2>
+    <p class="note">시골쥐식 3분법. 고정비를 먼저 줄여야 매달 효과가 납니다.</p>
+    <div id="fixvar"></div>
+    <table style="margin-top:14px">
+      <thead><tr><th>고정비 항목</th><th>이번 달</th></tr></thead>
+      <tbody id="fixtable"></tbody>
+    </table>
+  </section>
+</div>
+
+{% if data.settlement.total %}
+<section class="card">
+  <h2>공동비용 정산</h2>
+  <p class="note">
+    이번 달 공동비용 ₩{{ '{:,}'.format(data.settlement.total) }} —
+    분담 기준 {{ '반반' if settings.split == 'half' else '소득 비례' }}
+  </p>
+  <table>
+    <thead><tr><th></th><th>낸 돈</th><th>분담해야 할 돈</th><th>차액</th></tr></thead>
+    <tbody>
+      {% for o in data.owners %}
+        <tr>
+          <td>{{ o }}</td>
+          <td>₩{{ '{:,}'.format(data.settlement.paid.get(o, 0)) }}</td>
+          <td>₩{{ '{:,}'.format(data.settlement.share.get(o, 0)) }}</td>
+          <td class="{{ 'up' if data.settlement.balance.get(o, 0) > 0 else 'down' }}">
+            {{ '+' if data.settlement.balance.get(o, 0) > 0 }}₩{{ '{:,}'.format(data.settlement.balance.get(o, 0)) }}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="note" style="margin-top:10px">차액이 양수인 쪽이 더 냈습니다.</p>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>순자산 — 부부 합산</h2>
+  <p class="note">뱅샐 파일에 자산·부채·투자·대출이 이미 들어 있어서 따로 입력할 게 없습니다.</p>
+  <div id="networth"></div>
+</section>
+
+{% if data.unclassified %}
+<section class="card">
+  <h2>정리할 것</h2>
+  <p class="note">한 번 눌러두면 그 상호의 과거·미래 거래가 전부 같이 분류되고, 다음 달 파일부터는 자동입니다.</p>
+  <div class="queue" id="queue"></div>
+  <div class="actions" style="margin-top:12px">
+    <a class="btn" href="{{ url_for('review') }}">정리 화면으로</a>
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+{% endblock %}

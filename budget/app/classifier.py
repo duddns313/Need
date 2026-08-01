@@ -25,9 +25,12 @@ USER_RULES = RULES_DIR / 'user_rules.json'
 
 
 class Classifier:
-    def __init__(self, rules: dict | None = None, user_rules: dict | None = None):
+    def __init__(self, rules: dict | None = None, user_rules: dict | None = None,
+                 user_rules_path: Path | None = None):
         self.rules = rules if rules is not None else _load(DEFAULT_RULES)
-        self.user_rules = user_rules if user_rules is not None else _load(USER_RULES, default={})
+        self.user_rules_path = Path(user_rules_path) if user_rules_path else USER_RULES
+        self.user_rules = (user_rules if user_rules is not None
+                           else _load(self.user_rules_path, default={}))
         self._compiled = None
 
     # ------------------------------------------------------------------ 분류
@@ -119,8 +122,8 @@ class Classifier:
         self.user_rules[content] = category
 
     def save_user_rules(self) -> None:
-        USER_RULES.parent.mkdir(parents=True, exist_ok=True)
-        USER_RULES.write_text(
+        self.user_rules_path.parent.mkdir(parents=True, exist_ok=True)
+        self.user_rules_path.write_text(
             json.dumps(self.user_rules, ensure_ascii=False, indent=2), encoding='utf-8'
         )
 

@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% set page = 'upload' %}
+{% block content %}
+
+<h1>뱅크샐러드 엑셀 올리기</h1>
+<p class="sub">두 분 파일을 각각 올리면 합쳐서 정리합니다. 한 명 것만 올려도 됩니다.</p>
+
+<form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data">
+  <section class="card">
+    <div class="slots">
+      <div class="slot-card">
+        <h3>{{ settings.husband_name }}</h3>
+        <p>뱅크샐러드에서 내보낸 .xlsx</p>
+        <input type="file" name="husband_file" accept=".xlsx">
+      </div>
+      <div class="slot-card">
+        <h3>{{ settings.wife_name }}</h3>
+        <p>없으면 비워두세요</p>
+        <input type="file" name="wife_file" accept=".xlsx">
+      </div>
+    </div>
+    <div class="actions" style="margin-top:16px">
+      <button type="submit">올리고 정리하기</button>
+      {% if has_data %}
+        <a class="btn ghost" href="{{ url_for('dashboard') }}">지금 데이터 보기</a>
+      {% endif %}
+    </div>
+  </section>
+</form>
+
+<section class="card">
+  <h2>뱅크샐러드에서 엑셀 내보내는 법</h2>
+  <ol class="steps">
+    <li>뱅크샐러드 앱 → <b>더보기</b> → <b>가계부 내보내기</b></li>
+    <li>기간을 <b>최근 1년</b>으로 잡습니다 (길수록 추이가 잘 보입니다)</li>
+    <li>엑셀 파일을 메일이나 카카오톡으로 이 PC에 옮깁니다</li>
+    <li>위 칸에 올립니다</li>
+  </ol>
+  <p class="note" style="margin-top:14px">
+    같은 파일을 두 번 올려도 거래가 두 배가 되지 않습니다. 겹치는 기간도 알아서 걸러냅니다.
+  </p>
+</section>
+
+<section class="card">
+  <h2>올린 파일은 어디로도 가지 않습니다</h2>
+  <p class="note">
+    이 프로그램은 이 PC 안에서만 돕니다. 엑셀 파일과 거래 내역은 밖으로 나가지 않습니다.<br>
+    바깥으로 나가는 건 딱 두 가지이고, 그것도 설정에서 켰을 때만입니다 —
+    <b>가맹점 상호명</b>을 지도에 물어보거나(업종 확인), Claude에게 물어보는 경우입니다.
+    <b>금액·날짜·계좌번호·카드번호는 어떤 경우에도 나가지 않습니다.</b>
+  </p>
+</section>
+
+{% if has_data %}
+<section class="card">
+  <h2>데이터 지우기</h2>
+  <p class="note">올린 거래를 전부 지웁니다. 분류 규칙과 설정은 남습니다.</p>
+  <form method="post" action="{{ url_for('reset') }}"
+        onsubmit="return confirm('올린 거래를 전부 지웁니다. 계속할까요?')">
+    <button class="ghost" type="submit">거래 데이터 지우기</button>
+  </form>
+</section>
+{% endif %}
+
+{% endblock %}

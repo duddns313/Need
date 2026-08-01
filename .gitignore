@@ -1,10 +1,11 @@
-__pycache__/
 *.pyc
-workspace/
-exports/
-dist/
-build/
 *.spec
-budget/rules/user_rules.json
+__pycache__/
+budget/budget_data/
 budget/data/
 budget/design/dashboard_mockup.html
+budget/rules/user_rules.json
+build/
+dist/
+exports/
+workspace/

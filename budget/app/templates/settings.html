@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% set page = 'settings' %}
+{% block content %}
+
+<h1>설정</h1>
+<p class="sub">이름과 정산 방식, 그리고 자동 분류에 쓰는 키를 넣는 곳입니다.</p>
+
+<form method="post" action="{{ url_for('settings_page') }}">
+
+  <section class="card">
+    <h2>이름과 정산</h2>
+    <p class="note">화면과 엑셀에 이 이름으로 표시됩니다.</p>
+    <div class="slots">
+      <label class="field">
+        <span class="lab">한 사람</span>
+        <input type="text" name="husband_name" value="{{ settings.husband_name }}">
+      </label>
+      <label class="field">
+        <span class="lab">다른 한 사람</span>
+        <input type="text" name="wife_name" value="{{ settings.wife_name }}">
+      </label>
+    </div>
+    <label class="field">
+      <span class="lab">공동비용 분담 기준</span>
+      <span class="hint">누가 더 냈는지 계산할 때 씁니다.</span>
+      <select name="split">
+        <option value="half" {{ 'selected' if settings.split == 'half' }}>반반</option>
+        <option value="income" {{ 'selected' if settings.split == 'income' }}>소득 비례</option>
+      </select>
+    </label>
+  </section>
+
+  <section class="card">
+    <h2>지도 조회 키 <span style="font-weight:400;color:var(--muted)">— 넣으면 좋고, 없어도 됩니다</span></h2>
+    <p class="note">
+      카드 명세서에는 <code>알레스구떼</code>, <code>가또블랑코</code> 같은 상호만 찍힙니다.
+      이게 식당인지 미용실인지는 지도에 물어보면 바로 압니다.
+      키를 넣으면 <b>상호명만</b> 보내서 업종을 확인합니다 — 금액·날짜·계좌번호는 나가지 않습니다.
+    </p>
+
+    <label class="field">
+      <span class="lab">카카오 REST API 키 <span style="color:var(--muted);font-weight:400">(이거 하나면 충분)</span></span>
+      <span class="hint">
+        {% if settings.kakao_key %}
+          현재 등록됨 — <code>{{ settings.kakao_key[:6] }}…{{ settings.kakao_key[-4:] }}</code>.
+          바꾸려면 새 키를 넣고 저장하세요.
+        {% else %}
+          아래 발급 방법을 보고 받으세요. 무료입니다.
+        {% endif %}
+      </span>
+      <input type="password" name="kakao_key" autocomplete="off"
+             placeholder="{{ '변경하려면 새 키를 입력' if settings.kakao_key else '카카오 REST API 키' }}">
+    </label>
+
+    <details>
+      <summary>카카오 키 받는 법 (5분)</summary>
+      <ol class="steps" style="margin-top:12px">
+        <li><a href="https://developers.kakao.com" target="_blank" rel="noopener">developers.kakao.com</a> 접속 → 카카오계정으로 <b>로그인</b></li>
+        <li>상단 <b>내 애플리케이션</b> → <b>애플리케이션 추가하기</b> → 앱 이름은 아무거나(예: 가계부), 사업자명은 본인 이름</li>
+        <li>만든 앱 클릭 → <b>앱 키</b> → <b>REST API 키</b> 복사
+          <br><span style="color:var(--critical)">JavaScript 키가 아니라 REST API 키입니다. 가장 흔한 실수예요.</span></li>
+        <li><b>앱 설정 → 플랫폼</b> → <b>Web 플랫폼 등록</b> → 사이트 도메인에 <code>http://localhost:8734</code></li>
+        <li><b>제품 설정 → 카카오맵</b> → <b>사용 설정 ON</b>
+          <br><span style="color:var(--critical)">이걸 빼먹으면 조회가 안 됩니다.</span></li>
+        <li>복사한 키를 위 칸에 붙여넣고 <b>저장</b></li>
+      </ol>
+    </details>
+
+    <details>
+      <summary>네이버 키로 대신하기</summary>
+      <div style="margin-top:12px">
+        <ol class="steps">
+          <li><a href="https://developers.naver.com" target="_blank" rel="noopener">developers.naver.com</a> → 로그인</li>
+          <li><b>Application → 애플리케이션 등록</b></li>
+          <li><b>사용 API</b>에서 <b>검색</b>을 반드시 선택, 환경은 <b>WEB 설정</b>, URL은 <code>http://localhost:8734</code></li>
+          <li>발급된 <b>Client ID</b>와 <b>Client Secret</b>을 아래에 입력</li>
+        </ol>
+        <label class="field" style="margin-top:12px">
+          <span class="lab">네이버 Client ID</span>
+          <input type="text" name="naver_id" value="{{ settings.naver_id }}" autocomplete="off">
+        </label>
+        <label class="field">
+          <span class="lab">네이버 Client Secret</span>
+          <input type="password" name="naver_secret" autocomplete="off"
+                 placeholder="{{ '등록됨 — 변경하려면 입력' if settings.naver_secret else '' }}">
+        </label>
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Claude 키 <span style="font-weight:400;color:var(--muted)">— 선택</span></h2>
+    <p class="note">
+      지도에도 없는 상호(온라인 결제, 폐업한 가게, 무인점포)까지 분류하고 싶을 때만 넣으세요.
+      <b>상호명만</b> 보냅니다. 유료지만 상호 100개 분류에 수십 원 수준입니다.
+    </p>
+    <label class="field">
+      <span class="lab">Anthropic API 키</span>
+      <span class="hint">
+        {% if settings.anthropic_key %}현재 등록됨.
+        {% else %}<a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>
+        → Billing에서 크레딧 충전 → API keys → Create Key
+        {% endif %}
+      </span>
+      <input type="password" name="anthropic_key" autocomplete="off"
+             placeholder="sk-ant-...">
+    </label>
+  </section>
+
+  <div class="actions">
+    <button type="submit">저장</button>
+    <a class="btn ghost" href="{{ url_for('upload') }}">파일 올리기로</a>
+  </div>
+</form>
+
+<p class="mock">
+  키는 이 PC의 <code>budget_data/settings.json</code> 에만 저장됩니다.
+  실수로 남에게 알려졌다면 각 사이트에서 재발급하면 이전 키는 바로 무효가 됩니다.
+</p>
+
+{% endblock %}
