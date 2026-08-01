@@ -5,3 +5,6 @@ exports/
 dist/
 build/
 *.spec
+budget/rules/user_rules.json
+budget/data/
+budget/design/dashboard_mockup.html

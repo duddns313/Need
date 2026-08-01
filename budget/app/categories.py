@@ -1,0 +1,66 @@
+"""카테고리 체계 — 시골쥐식 3분법(고정비/변동비/저축투자) + 수입 + 제외.
+
+모든 집계·차트·엑셀이 이 파일 하나를 참조한다.
+카테고리를 늘리고 싶으면 여기만 고친다.
+"""
+
+# 성격(축)
+INCOME = '수입'
+FIXED = '고정비'
+VARIABLE = '변동비'
+SAVING = '저축투자'
+EXCLUDED = '제외'
+
+NATURES = [INCOME, FIXED, VARIABLE, SAVING, EXCLUDED]
+
+# 집계에 실제로 잡히는 축 (제외는 빠진다)
+COUNTED_NATURES = [INCOME, FIXED, VARIABLE, SAVING]
+
+# 카테고리 -> 성격
+CATEGORIES = {
+    # 수입
+    '급여': INCOME,
+    '부수입': INCOME,
+    '금융소득': INCOME,
+    # 고정비
+    '주거·관리비': FIXED,
+    '통신': FIXED,
+    '보험': FIXED,
+    '구독료': FIXED,
+    '대출이자': FIXED,
+    # 변동비
+    '식비·외식': VARIABLE,
+    '생활·마트': VARIABLE,
+    '교통': VARIABLE,
+    '의료·건강': VARIABLE,
+    '문화·여가': VARIABLE,
+    '쇼핑': VARIABLE,
+    '경조·선물': VARIABLE,
+    '여행·숙박': VARIABLE,
+    '자동차': VARIABLE,
+    '교육': VARIABLE,
+    '세금·기타': VARIABLE,
+    '미분류': VARIABLE,
+    # 저축·투자
+    '저축·예금': SAVING,
+    '투자': SAVING,
+    '대출원금상환': SAVING,
+    # 제외 (지출이 아니다)
+    '내계좌이체': EXCLUDED,
+    '카드대금': EXCLUDED,
+    '페이충전': EXCLUDED,
+    '부부간이체': EXCLUDED,
+}
+
+# 화면·엑셀에서의 표시 순서
+ORDER = list(CATEGORIES.keys())
+
+
+def nature_of(category):
+    """카테고리의 성격을 돌려준다. 모르는 카테고리는 변동비로 본다."""
+    return CATEGORIES.get(category, VARIABLE)
+
+
+def categories_of(nature):
+    """해당 성격에 속하는 카테고리 목록 (표시 순서 유지)."""
+    return [c for c in ORDER if CATEGORIES[c] == nature]

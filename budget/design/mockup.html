@@ -1,0 +1,532 @@
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>부부 공동 가계부 — 대시보드 시안</title>
+<script id="data" type="application/json">__DATA__</script>
+
+<style>
+  :root {
+    color-scheme: light;
+    --plane:#f9f9f7; --surface:#fcfcfb;
+    --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10);
+    --income:#eb6834; --spend:#2a78d6; --save:#1baf7a;
+    --spend-2:#86b6ef; --debt:#e34948;
+    --income-wash:rgba(235,104,52,.09);
+    --spend-wash:rgba(42,120,214,.09);
+    --save-wash:rgba(27,175,122,.09);
+    --navy:#1f2b50; --navy-ink:#ffffff;
+    --good:#0ca30c; --warning:#fab219; --critical:#d03b3b;
+    --pink:#e0447d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --plane:#0d0d0d; --surface:#1a1a19;
+      --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+      --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+      --income:#d95926; --spend:#3987e5; --save:#199e70;
+      --spend-2:#1c5cab; --debt:#e66767;
+      --income-wash:rgba(217,89,38,.14);
+      --spend-wash:rgba(57,135,229,.14);
+      --save-wash:rgba(25,158,112,.14);
+      --navy:#243356; --navy-ink:#ffffff;
+      --pink:#e87ba4;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --plane:#0d0d0d; --surface:#1a1a19;
+    --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+    --income:#d95926; --spend:#3987e5; --save:#199e70;
+    --spend-2:#1c5cab; --debt:#e66767;
+    --income-wash:rgba(217,89,38,.14);
+    --spend-wash:rgba(57,135,229,.14);
+    --save-wash:rgba(25,158,112,.14);
+    --navy:#243356; --navy-ink:#ffffff;
+    --pink:#e87ba4;
+  }
+
+  * { box-sizing:border-box; }
+  body {
+    margin:0; padding:20px 16px 64px;
+    background:var(--plane); color:var(--ink);
+    font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  .wrap { max-width:1180px; margin:0 auto; }
+
+  h1 { font-size:21px; font-weight:650; margin:0 0 2px; letter-spacing:-.01em; }
+  .sub { color:var(--ink-2); font-size:13.5px; margin:0 0 20px; }
+
+  .card {
+    background:var(--surface); border:1px solid var(--ring);
+    border-radius:12px; padding:18px 18px 20px; margin-bottom:14px;
+  }
+  .card > h2 {
+    font-size:13px; font-weight:650; margin:0 0 4px;
+    letter-spacing:.02em; color:var(--ink);
+  }
+  .card > .note { font-size:12.5px; color:var(--muted); margin:0 0 16px; }
+
+  /* ── 상단 바 ─────────────────────────────── */
+  .topbar {
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+    margin-bottom:14px;
+  }
+  .seg { display:flex; border:1px solid var(--ring); border-radius:9px; overflow:hidden; background:var(--surface); }
+  .seg button {
+    font:inherit; font-size:13px; padding:7px 14px; border:0; cursor:pointer;
+    background:transparent; color:var(--ink-2); border-right:1px solid var(--ring);
+  }
+  .seg button:last-child { border-right:0; }
+  .seg button[aria-pressed="true"] { background:var(--navy); color:var(--navy-ink); font-weight:600; }
+  select {
+    font:inherit; font-size:13px; padding:7px 10px; border-radius:9px;
+    border:1px solid var(--ring); background:var(--surface); color:var(--ink);
+  }
+  .slot {
+    display:inline-flex; align-items:center; gap:7px; font-size:12.5px;
+    padding:6px 12px; border-radius:9px; border:1px solid var(--ring);
+    background:var(--surface); color:var(--ink-2);
+  }
+  .slot b { color:var(--ink); font-weight:600; }
+  .dot { width:8px; height:8px; border-radius:50%; flex:none; }
+  .dot.on { background:var(--good); }
+  .dot.off { background:var(--muted); }
+
+  /* ── KPI ─────────────────────────────────── */
+  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px; }
+  .kpi { background:var(--surface); border:1px solid var(--ring); border-radius:12px; padding:15px 16px 14px; min-width:0; }
+  .kpi > * { min-width:0; overflow-wrap:anywhere; }
+  .kpi .lab { font-size:12.5px; color:var(--ink-2); display:flex; align-items:center; gap:6px; }
+  .kpi .val { font-size:25px; font-weight:650; letter-spacing:-.02em; margin:5px 0 3px; }
+  .kpi .val.hero { font-size:30px; }
+  .kpi .delta { font-size:12px; color:var(--muted); }
+  .kpi .delta b { font-weight:600; }
+  .up { color:var(--good); } .down { color:var(--critical); }
+
+  /* ── 정제 리포트 ─────────────────────────── */
+  .clean { border-left:3px solid var(--spend); }
+  .clean-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .clean-item .n { font-size:18px; font-weight:650; font-variant-numeric:tabular-nums; }
+  .clean-item .k { font-size:12.5px; color:var(--ink-2); }
+
+  /* ── 가로 막대 3블록 ─────────────────────── */
+  .three { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .block { border-radius:12px; padding:14px 16px 16px; border:1px solid var(--ring); }
+  .block.income { background:var(--income-wash); }
+  .block.spend  { background:var(--spend-wash); }
+  .block.save   { background:var(--save-wash); }
+  .block h3 { font-size:12.5px; font-weight:650; margin:0 0 2px; display:flex; align-items:center; gap:7px; }
+  .block .tot { font-size:19px; font-weight:650; letter-spacing:-.01em; margin:0 0 14px; font-variant-numeric:tabular-nums; }
+
+  .rows { display:flex; flex-direction:column; gap:9px; }
+  .row { display:grid; grid-template-columns:minmax(0,88px) 1fr auto; align-items:center; gap:9px; font-size:12.5px; }
+  .row .name { color:var(--ink-2); text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .track { height:14px; position:relative; }
+  .bar { height:14px; border-radius:0 4px 4px 0; min-width:2px; }
+  .row .amt { color:var(--ink); font-variant-numeric:tabular-nums; font-size:12px; white-space:nowrap; }
+
+  /* ── 차트 공통 ──────────────────────────── */
+  figure { margin:0; }
+  figcaption { font-size:12.5px; color:var(--muted); margin-top:10px; }
+  svg { display:block; width:100%; height:auto; }
+  .gridline { stroke:var(--grid); stroke-width:1; }
+  .axisline { stroke:var(--axis); stroke-width:1; }
+  .tick { font-size:11px; fill:var(--muted); font-variant-numeric:tabular-nums; }
+  .lbl { font-size:11.5px; fill:var(--ink-2); }
+  .line { fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }
+
+  .legend { display:flex; flex-wrap:wrap; gap:16px; margin:0 0 12px; font-size:12.5px; color:var(--ink-2); }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .key { width:14px; height:3px; border-radius:2px; flex:none; }
+  .key.sq { width:11px; height:11px; border-radius:3px; }
+
+  /* ── 스택 막대 (카테고리 × 소유자) ───────── */
+  .stack-row { display:grid; grid-template-columns:80px 1fr auto; align-items:center; gap:10px; font-size:12.5px; margin-bottom:9px; }
+  .stack { display:flex; height:16px; }
+  .stack i { height:16px; display:block; }
+  .stack i:first-child { border-radius:4px 0 0 4px; }
+  .stack i:last-child { border-radius:0 4px 4px 0; }
+  .stack i + i { margin-left:2px; }
+  .stack i:only-child { border-radius:0 4px 4px 0; }
+
+  /* ── 표 ─────────────────────────────────── */
+  .scroll { overflow-x:auto; max-width:100%; }
+  .card, .block, details { min-width:0; }
+  table { border-collapse:collapse; width:100%; font-size:12.5px; min-width:0; }
+  .scroll table { min-width:420px; }
+  th, td { text-align:right; padding:7px 10px; border-bottom:1px solid var(--grid); white-space:nowrap; }
+  th:first-child, td:first-child { text-align:left; }
+  th { color:var(--muted); font-weight:600; font-size:11.5px; }
+  td { font-variant-numeric:tabular-nums; }
+  tbody tr:last-child td { border-bottom:0; }
+  details { margin-top:14px; }
+  summary { font-size:12.5px; color:var(--ink-2); cursor:pointer; }
+
+  /* ── 정리 큐 ─────────────────────────────── */
+  .queue { display:flex; flex-direction:column; gap:10px; }
+  .qitem { display:flex; gap:12px; align-items:flex-start; padding:12px 14px; border:1px solid var(--ring); border-radius:10px; background:var(--plane); }
+  .qitem .ic { font-size:15px; line-height:1.3; flex:none; }
+  .qitem .body { flex:1; min-width:0; }
+  .qitem .t { font-size:13px; font-weight:600; margin-bottom:2px; }
+  .qitem .d { font-size:12.5px; color:var(--ink-2); }
+  .pill { font-size:11.5px; padding:3px 9px; border-radius:99px; border:1px solid var(--ring); color:var(--ink-2); background:var(--surface); white-space:nowrap; flex:none; }
+
+  .two { display:grid; grid-template-columns:1.35fr 1fr; gap:14px; }
+  .mock { font-size:11.5px; color:var(--muted); border-top:1px solid var(--grid); margin-top:26px; padding-top:14px; }
+
+  /* 툴팁 */
+  #tip {
+    position:fixed; pointer-events:none; opacity:0; transition:opacity .1s;
+    background:var(--ink); color:var(--plane); font-size:12px; line-height:1.45;
+    padding:7px 10px; border-radius:7px; z-index:50; max-width:230px;
+    font-variant-numeric:tabular-nums;
+  }
+  [data-tip] { cursor:default; }
+
+  @media (max-width:900px) {
+    .kpis { grid-template-columns:repeat(2,1fr); }
+    .three { grid-template-columns:1fr; }
+    .two { grid-template-columns:1fr; }
+  }
+  @media (max-width:560px) {
+    .row .name, .stack-row .name { font-size:12px; }
+    .row .amt { font-size:11.5px; }
+  }
+</style>
+
+<div class="wrap">
+  <h1>부부 공동 가계부</h1>
+  <p class="sub">뱅크샐러드 엑셀 2개를 올리면 정제·합산해서 보여줍니다. — <b>대시보드 시안</b></p>
+
+  <div class="topbar">
+    <div class="seg" role="group" aria-label="보기 대상">
+      <button aria-pressed="true">부부 합산</button>
+      <button aria-pressed="false">남편</button>
+      <button aria-pressed="false">아내</button>
+    </div>
+    <select aria-label="기준월"><option>2026년 7월</option></select>
+    <span class="slot"><i class="dot on"></i>남편 <b id="huscount"></b></span>
+    <span class="slot"><i class="dot off"></i>아내 <b>미업로드</b></span>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section class="card clean">
+    <h2>정제 리포트 — 뱅샐 원본에서 뺀 것</h2>
+    <p class="note">계좌 간 이체·카드대금 납부·페이 충전은 쓴 돈이 아닙니다. 이걸 빼야 진짜 지출이 보입니다.</p>
+    <div class="clean-grid" id="clean"></div>
+  </section>
+
+  <section class="card">
+    <h2>2026년 7월</h2>
+    <p class="note">수입은 주황, 지출은 파랑, 저축·투자는 초록으로 고정했습니다. 어느 화면에서든 같은 뜻입니다.</p>
+    <div class="three" id="three"></div>
+  </section>
+
+  <section class="card">
+    <h2>월별 추이 — 최근 12개월</h2>
+    <p class="note">세 값 모두 원 단위 한 축입니다. 축을 두 개로 나누면 없는 관계가 보이므로 쓰지 않았습니다.</p>
+    <div class="legend">
+      <span><i class="key" style="background:var(--income)"></i>수입</span>
+      <span><i class="key" style="background:var(--spend)"></i>지출</span>
+      <span><i class="key" style="background:var(--save)"></i>저축·투자</span>
+    </div>
+    <figure>
+      <div id="trend"></div>
+      <figcaption>점에 마우스를 올리면 그 달 값이 나옵니다.</figcaption>
+    </figure>
+    <details>
+      <summary>표로 보기</summary>
+      <div class="scroll" id="trendtable"></div>
+    </details>
+  </section>
+
+  <div class="two">
+    <section class="card">
+      <h2>카테고리별 지출 — 누가 얼마나</h2>
+      <p class="note">아내 파일을 올리면 같은 막대가 두 색으로 나뉘어 누가 어디에 쓰는지 바로 보입니다.</p>
+      <div class="legend">
+        <span><i class="key sq" style="background:var(--spend)"></i>남편</span>
+        <span><i class="key sq" style="background:var(--spend-2)"></i>아내 <span style="color:var(--muted)">(미업로드)</span></span>
+      </div>
+      <div id="bycat"></div>
+    </section>
+
+    <section class="card">
+      <h2>고정비 · 변동비</h2>
+      <p class="note">시골쥐식 3분법. 고정비를 먼저 줄여야 매달 효과가 납니다.</p>
+      <div id="fixvar"></div>
+      <table style="margin-top:14px">
+        <thead><tr><th>고정비 항목</th><th>이번 달</th></tr></thead>
+        <tbody id="fixtable"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>순자산 — 부부 합산</h2>
+    <p class="note">뱅샐 파일에 자산·부채·투자·대출이 이미 들어 있어서 따로 입력할 게 없습니다.</p>
+    <div id="networth"></div>
+  </section>
+
+  <section class="card">
+    <h2>정리할 것 <span style="font-weight:400;color:var(--muted)">— 실제로 이 파일에서 찾은 항목입니다</span></h2>
+    <p class="note">한 번 눌러두면 그 상호의 과거·미래 거래가 전부 같이 분류되고, 다음 달 파일부터는 자동입니다.</p>
+    <div class="queue" id="queue"></div>
+  </section>
+
+  <p class="mock">
+    시안입니다. 숫자는 올려주신 뱅크샐러드 파일(2025-08-01 ~ 2026-08-01, 거래 <span id="ntx"></span>건)을
+    실제로 파싱·분류해서 계산한 값입니다. 아내 파일이 없어서 부부 합산 부분은 남편 데이터만 들어가 있습니다.
+  </p>
+</div>
+
+<div id="tip" role="status"></div>
+
+<script>
+const D = JSON.parse(document.getElementById('data').textContent);
+const won = n => '₩' + Math.round(n).toLocaleString('ko-KR');
+const man = n => {
+  const a = Math.abs(n);
+  if (a >= 1e8) return (n/1e8).toFixed(1).replace(/\.0$/,'') + '억';
+  if (a >= 1e4) return Math.round(n/1e4).toLocaleString('ko-KR') + '만';
+  return Math.round(n).toLocaleString('ko-KR');
+};
+const el = (t, cls, html) => { const e = document.createElement(t); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+
+/* ── 툴팁 ─────────────────────────────────── */
+const tip = document.getElementById('tip');
+document.addEventListener('pointerover', e => {
+  const t = e.target.closest('[data-tip]');
+  if (!t) return;
+  tip.innerHTML = t.dataset.tip;
+  tip.style.opacity = 1;
+});
+document.addEventListener('pointermove', e => {
+  if (tip.style.opacity !== '1') return;
+  const pad = 14, r = tip.getBoundingClientRect();
+  let x = e.clientX + pad, y = e.clientY + pad;
+  if (x + r.width > innerWidth - 8) x = e.clientX - r.width - pad;
+  if (y + r.height > innerHeight - 8) y = e.clientY - r.height - pad;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+});
+document.addEventListener('pointerout', e => {
+  if (e.target.closest('[data-tip]')) tip.style.opacity = 0;
+});
+
+/* ── KPI ─────────────────────────────────── */
+document.getElementById('huscount').textContent = D.n_tx.toLocaleString('ko-KR') + '건';
+document.getElementById('ntx').textContent = D.n_tx.toLocaleString('ko-KR');
+
+const s = D.summary, pv = D.prev;
+const kpiDefs = [
+  { k:'수입',    c:'var(--income)', v:s['수입'],     p:pv['수입'],     goodUp:true  },
+  { k:'지출',    c:'var(--spend)',  v:s['지출'],     p:pv['지출'],     goodUp:false },
+  { k:'저축·투자', c:'var(--save)',   v:s['저축투자'], p:pv['저축투자'], goodUp:true  },
+];
+const kwrap = document.getElementById('kpis');
+kpiDefs.forEach(d => {
+  const diff = d.v - d.p;
+  const good = diff === 0 ? null : (diff > 0) === d.goodUp;
+  const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '–';
+  const cls = good === null ? '' : good ? 'up' : 'down';
+  const c = el('div','kpi');
+  c.innerHTML = `<div class="lab"><i class="dot" style="background:${d.c}"></i>${d.k}</div>
+    <div class="val">${won(d.v)}</div>
+    <div class="delta">전월 대비 <b class="${cls}">${arrow} ${man(Math.abs(diff))}</b></div>`;
+  kwrap.appendChild(c);
+});
+const rate = s['저축률'], prate = pv['저축률'], rdiff = rate - prate;
+const kr = el('div','kpi');
+kr.innerHTML = `<div class="lab">저축률 <span style="color:var(--muted)">(수입−지출)/수입</span></div>
+  <div class="val hero">${(rate*100).toFixed(0)}%</div>
+  <div class="delta">전월 대비 <b class="${rdiff>=0?'up':'down'}">${rdiff>=0?'▲':'▼'} ${Math.abs(rdiff*100).toFixed(0)}%p</b></div>`;
+kwrap.appendChild(kr);
+
+/* ── 정제 리포트 ─────────────────────────── */
+const cw = document.getElementById('clean');
+const exc = D.excluded, excTotal = Object.values(exc).reduce((a,b)=>a+b,0);
+[['제외한 금액 (1년)', excTotal, '뱅샐이 지출로 세던 금액'],
+ ...Object.entries(exc).map(([k,v]) => [k, v, ''])].forEach(([k,v,note]) => {
+  cw.appendChild(el('div','clean-item',
+    `<div class="n">${won(v)}</div><div class="k">${k}${note?`<br><span style="color:var(--muted)">${note}</span>`:''}</div>`));
+});
+cw.appendChild(el('div','clean-item',
+  `<div class="n" style="color:var(--warning)">${D.unclassified_n}건</div>
+   <div class="k">아직 미분류<br><span style="color:var(--muted)">원본 342건에서 줄인 값</span></div>`));
+
+/* ── 가로 막대 3블록 ─────────────────────── */
+function block(cls, title, color, cats) {
+  const entries = Object.entries(cats).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]);
+  const total = entries.reduce((a,[,v]) => a+v, 0);
+  const max = Math.max(...entries.map(([,v]) => v), 1);
+  const b = el('div','block ' + cls);
+  b.appendChild(el('h3', null, `<i class="dot" style="background:${color}"></i>${title}`));
+  b.appendChild(el('div','tot', won(total)));
+  const rows = el('div','rows');
+  entries.forEach(([name, v]) => {
+    const r = el('div','row');
+    r.innerHTML = `<div class="name">${name}</div>
+      <div class="track"><div class="bar" style="width:${Math.max(v/max*100,1.5)}%;background:${color}"
+        data-tip="<b>${name}</b><br>${won(v)}<br>${title} 중 ${(v/total*100).toFixed(0)}%"></div></div>
+      <div class="amt">${man(v)}</div>`;
+    rows.appendChild(r);
+  });
+  if (!entries.length) rows.appendChild(el('div','row','<div class="name"></div><div style="color:var(--muted);font-size:12.5px">없음</div><div></div>'));
+  b.appendChild(rows);
+  return b;
+}
+const three = document.getElementById('three');
+three.appendChild(block('income','이달 수입','var(--income)', D.income_cat));
+three.appendChild(block('spend','이달 지출','var(--spend)', {...D.fixed_cat, ...D.var_cat}));
+three.appendChild(block('save','이달 저축·투자','var(--save)', D.save_cat));
+
+/* ── 월별 추이 ───────────────────────────── */
+(function trend() {
+  const rows = D.series.filter(r => r.수입 + r.지출 > 100000);
+  const W = 1000, H = 300, ml = 62, mr = 82, mt = 14, mb = 34;
+  const iw = W - ml - mr, ih = H - mt - mb;
+  const max = Math.max(...rows.flatMap(r => [r.수입, r.지출, r.저축투자]));
+  const step = Math.pow(10, Math.floor(Math.log10(max)));
+  const top = Math.ceil(max / (step/2)) * (step/2);
+  const x = i => ml + (rows.length === 1 ? iw/2 : i * iw / (rows.length - 1));
+  const y = v => mt + ih - (v / top) * ih;
+
+  const series = [
+    { k:'수입', key:'수입', c:'var(--income)' },
+    { k:'지출', key:'지출', c:'var(--spend)' },
+    { k:'저축·투자', key:'저축투자', c:'var(--save)' },
+  ];
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="월별 수입·지출·저축 추이">`;
+  for (let t = 0; t <= 4; t++) {
+    const v = top * t / 4, yy = y(v);
+    svg += `<line class="gridline" x1="${ml}" x2="${ml+iw}" y1="${yy}" y2="${yy}"/>
+            <text class="tick" x="${ml-9}" y="${yy+4}" text-anchor="end">${man(v)}</text>`;
+  }
+  svg += `<line class="axisline" x1="${ml}" x2="${ml+iw}" y1="${y(0)}" y2="${y(0)}"/>`;
+  rows.forEach((r, i) => {
+    const m = +r.month.slice(5);
+    svg += `<text class="tick" x="${x(i)}" y="${H-12}" text-anchor="middle">${m}월</text>`;
+  });
+  series.forEach(sr => {
+    const d = rows.map((r,i) => `${i?'L':'M'}${x(i)},${y(r[sr.key])}`).join(' ');
+    svg += `<path class="line" d="${d}" stroke="${sr.c}"/>`;
+  });
+  series.forEach(sr => {
+    rows.forEach((r,i) => {
+      svg += `<circle cx="${x(i)}" cy="${y(r[sr.key])}" r="4.5" fill="${sr.c}"
+        stroke="var(--surface)" stroke-width="2"/>`;
+    });
+    const last = rows.length - 1;
+    svg += `<text class="lbl" x="${x(last)+11}" y="${y(rows[last][sr.key])+4}">${sr.k}</text>`;
+  });
+  // 히트 영역 (열 단위 크로스헤어)
+  rows.forEach((r,i) => {
+    const half = iw / (rows.length - 1) / 2;
+    const tipHtml = `<b>${r.month}</b><br>수입 ${won(r.수입)}<br>지출 ${won(r.지출)}<br>저축·투자 ${won(r.저축투자)}<br>저축률 ${(r.저축률*100).toFixed(0)}%`;
+    svg += `<rect x="${x(i)-half}" y="${mt}" width="${half*2}" height="${ih}" fill="transparent"
+      data-tip="${tipHtml.replace(/"/g,'&quot;')}"/>`;
+  });
+  svg += `</svg>`;
+  document.getElementById('trend').innerHTML = svg;
+
+  let t = `<table><thead><tr><th>월</th><th>수입</th><th>지출</th><th>저축·투자</th><th>저축률</th></tr></thead><tbody>`;
+  rows.forEach(r => {
+    t += `<tr><td>${r.month}</td><td>${won(r.수입)}</td><td>${won(r.지출)}</td><td>${won(r.저축투자)}</td><td>${(r.저축률*100).toFixed(0)}%</td></tr>`;
+  });
+  document.getElementById('trendtable').innerHTML = t + '</tbody></table>';
+})();
+
+/* ── 카테고리별 지출 (소유자 스택) ───────── */
+(function bycat() {
+  const cats = {...D.fixed_cat, ...D.var_cat};
+  const entries = Object.entries(cats).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  const max = Math.max(...entries.map(([,v])=>v), 1);
+  const box = document.getElementById('bycat');
+  entries.forEach(([name, v]) => {
+    const hus = v, wife = 0;   // 아내 파일이 없어 전액 남편
+    const r = el('div','stack-row');
+    r.innerHTML = `<div class="name" style="color:var(--ink-2);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
+      <div class="stack" style="width:${Math.max(v/max*100,2)}%">
+        <i style="background:var(--spend);flex:${hus||1}" data-tip="<b>${name}</b> · 남편<br>${won(hus)}"></i>
+      </div>
+      <div class="amt" style="font-variant-numeric:tabular-nums;font-size:12px">${man(v)}</div>`;
+    box.appendChild(r);
+  });
+})();
+
+/* ── 고정비 · 변동비 ─────────────────────── */
+(function fixvar() {
+  const f = Object.values(D.fixed_cat).reduce((a,b)=>a+b,0);
+  const v = Object.values(D.var_cat).reduce((a,b)=>a+b,0);
+  const tot = f + v || 1;
+  document.getElementById('fixvar').innerHTML = `
+    <div class="stack" style="height:26px;margin-bottom:12px">
+      <i style="background:var(--spend);flex:${f};height:26px" data-tip="고정비<br>${won(f)} · ${(f/tot*100).toFixed(0)}%"></i>
+      <i style="background:var(--spend-2);flex:${v};height:26px" data-tip="변동비<br>${won(v)} · ${(v/tot*100).toFixed(0)}%"></i>
+    </div>
+    <div class="legend" style="margin:0">
+      <span><i class="key sq" style="background:var(--spend)"></i>고정비 ${won(f)} · ${(f/tot*100).toFixed(0)}%</span>
+      <span><i class="key sq" style="background:var(--spend-2)"></i>변동비 ${won(v)} · ${(v/tot*100).toFixed(0)}%</span>
+    </div>`;
+  const tb = document.getElementById('fixtable');
+  Object.entries(D.fixed_cat).sort((a,b)=>b[1]-a[1]).forEach(([k,val]) => {
+    tb.appendChild(el('tr', null, `<td>${k}</td><td>${won(val)}</td>`));
+  });
+})();
+
+/* ── 순자산 ─────────────────────────────── */
+(function nw() {
+  const a = D.assets, l = D.liabilities, n = D.net;
+  const max = Math.max(a, l, 1);
+  const inv = D.investments.reduce((s,i) => s + (i['평가금액']||0), 0);
+  const cost = D.investments.reduce((s,i) => s + (i['원금']||0), 0);
+  const ret = cost ? (inv - cost) / cost : 0;
+  document.getElementById('networth').innerHTML = `
+    <div style="font-size:34px;font-weight:650;letter-spacing:-.02em;margin-bottom:4px">${won(n)}</div>
+    <div style="font-size:12.5px;color:var(--ink-2);margin-bottom:18px">총자산 ${won(a)} − 총부채 ${won(l)}</div>
+    <div class="rows">
+      <div class="row"><div class="name">총자산</div>
+        <div class="track"><div class="bar" style="width:${a/max*100}%;background:var(--save)" data-tip="총자산<br>${won(a)}"></div></div>
+        <div class="amt">${man(a)}</div></div>
+      <div class="row"><div class="name">총부채</div>
+        <div class="track"><div class="bar" style="width:${l/max*100}%;background:var(--debt)" data-tip="총부채<br>${won(l)}"></div></div>
+        <div class="amt">${man(l)}</div></div>
+    </div>
+    <div style="display:flex;gap:26px;flex-wrap:wrap;margin-top:18px;font-size:12.5px">
+      <div><div style="color:var(--ink-2)">투자 평가금액</div><div style="font-size:17px;font-weight:600">${won(inv)}</div></div>
+      <div><div style="color:var(--ink-2)">투자 수익률</div><div style="font-size:17px;font-weight:600" class="${ret>=0?'up':'down'}">${ret>=0?'+':''}${(ret*100).toFixed(1)}%</div></div>
+      <div><div style="color:var(--ink-2)">대출 잔액</div><div style="font-size:17px;font-weight:600">${won(D.loans.reduce((s,x)=>s+(x['잔액']||0),0))}</div></div>
+    </div>`;
+})();
+
+/* ── 정리 큐 ─────────────────────────────── */
+(function queue() {
+  const q = document.getElementById('queue');
+  D.promoted.forEach(p => {
+    q.appendChild(el('div','qitem',
+      `<div class="ic">💰</div>
+       <div class="body"><div class="t">‘${p.content}’ ${p.count}건을 급여로 올렸습니다</div>
+       <div class="d">뱅샐은 이걸 ‘금융수입/미분류’로 던져놨습니다. 1년 합계 ${won(p.amount)} — 금액과 반복 횟수로 보면 급여입니다.</div></div>
+       <span class="pill">되돌리기</span>`));
+  });
+  D.candidates.forEach(c => {
+    q.appendChild(el('div','qitem',
+      `<div class="ic">🔁</div>
+       <div class="body"><div class="t">‘${c.content}’ ${c.count}건 — 배우자 송금인가요?</div>
+       <div class="d">1년 합계 ${won(c.amount)}. 이 금액이 지금 지출로 잡혀 있습니다. 배우자라면 아내 파일을 올렸을 때 자동으로 상계돼 양쪽에서 사라집니다.</div></div>
+       <span class="pill">배우자로 지정</span>`));
+  });
+  // 배우자 송금 후보로 이미 물어본 상호는 미분류 목록에서 빼서 같은 걸 두 번 묻지 않는다
+  const asked = new Set(D.candidates.map(c => c.content));
+  D.unclassified.filter(u => ![...asked].some(a => u.content.startsWith(a))).slice(0,4).forEach(u => {
+    q.appendChild(el('div','qitem',
+      `<div class="ic">❓</div>
+       <div class="body"><div class="t">${u.content}</div>
+       <div class="d">${u.count}건 · ${won(u.amount)} — 카테고리를 한 번만 정해주면 전부 같이 분류됩니다.</div></div>
+       <span class="pill">분류하기</span>`));
+  });
+})();
+</script>
