@@ -1,43 +1,34 @@
 @echo off
-chcp 65001 > nul
-title 부부 공동 가계부
+rem  ---------------------------------------------------------------
+rem   Korean text must NOT be used in this file.
+rem   Windows CMD reads .bat with the system code page, not UTF-8,
+rem   so Korean here corrupts the commands themselves.
+rem   All user-facing Korean lives in budget\_launcher.py instead.
+rem  ---------------------------------------------------------------
+title Budget
 cd /d "%~dp0.."
 
-echo.
-echo   부부 공동 가계부를 시작합니다.
-echo.
-
-REM ── 파이썬이 있는지 확인 ──────────────────────────────
-where python > nul 2>&1
-if errorlevel 1 (
-  echo   [!] 파이썬이 설치되어 있지 않습니다.
-  echo.
-  echo   1) https://www.python.org/downloads/  에 접속
-  echo   2) 노란 [Download Python] 버튼 클릭
-  echo   3) 설치할 때 맨 아래 [Add python.exe to PATH] 를 반드시 체크
-  echo   4) 설치가 끝나면 이 창을 닫고 시작.bat 를 다시 실행
-  echo.
-  pause
-  exit /b 1
+where py >nul 2>&1
+if %errorlevel%==0 (
+  py "budget\_launcher.py"
+  goto done
 )
 
-REM ── 처음이면 필요한 것들을 설치 ──────────────────────
-python -c "import flask, openpyxl, waitress" > nul 2>&1
-if errorlevel 1 (
-  echo   처음 실행이라 필요한 것들을 받는 중입니다. 1~2분 걸립니다...
-  echo.
-  python -m pip install --quiet --disable-pip-version-check -r requirements.txt
-  if errorlevel 1 (
-    echo.
-    echo   [!] 설치에 실패했습니다. 인터넷 연결을 확인해 주세요.
-    pause
-    exit /b 1
-  )
+where python >nul 2>&1
+if %errorlevel%==0 (
+  python "budget\_launcher.py"
+  goto done
 )
 
-echo   브라우저가 곧 열립니다.
-echo   가계부를 끄려면 이 검은 창을 닫으세요.
+echo.
+echo   [ERROR] Python is not installed.
+echo.
+echo   1^) Open  https://www.python.org/downloads/
+echo   2^) Click the yellow [Download Python] button
+echo   3^) IMPORTANT: check [Add python.exe to PATH] while installing
+echo   4^) Close this window, then run this file again
 echo.
 
-python budget\run.py
+:done
+echo.
 pause
