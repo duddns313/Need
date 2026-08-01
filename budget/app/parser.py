@@ -36,6 +36,7 @@ class Transaction:
     method: str
     memo: str
     owner: str            # 남편/아내 (업로드 슬롯에서 부여)
+    seq: int = 0          # 같은 파일 안에서 완전히 동일한 행의 등장 순번 (0,1,2…)
 
     # 분류기가 채우는 값
     category: str = ''
@@ -46,8 +47,24 @@ class Transaction:
 
     @property
     def uid(self) -> str:
-        """중복 업로드 제거용 키. 같은 거래는 항상 같은 값이 나온다."""
-        raw = f'{self.owner}|{self.date}|{self.time}|{self.bs_type}|{self.amount}|{self.content}'
+        """중복 업로드 제거용 키. 같은 거래는 항상 같은 값이 나온다.
+
+        두 가지를 구분해야 한다. 둘 다 '모든 칸이 같은 두 행'으로 보이지만 처리가 반대다.
+
+          (1) 같은 파일을 두 번 업로드  → 하나로 합쳐야 한다
+          (2) 한 파일 안에 똑같은 행 두 개 → 둘 다 남겨야 한다 (진짜 거래 두 건일 수 있다)
+
+        그래서 키에 두 가지를 넣는다.
+          - `method`(결제수단·계좌): 빼면 계좌 간 이체의 양쪽 다리가 뭉개진다.
+            뱅샐은 보낸 통장과 받은 통장을 각각 한 행씩 기록하는데, 둘은 날짜·시각·
+            금액·내용이 같고 통장만 다르다. 실제로 이 버그로 48건이 조용히 사라졌다.
+          - `seq`(파일 내 등장 순번): (2)를 살린다. 같은 파일을 두 번 넣으면 두 번째
+            파일의 순번도 0,1,2… 로 같게 매겨지므로 (1)은 여전히 합쳐진다.
+        """
+        raw = '|'.join([
+            self.owner, str(self.date), self.time, self.bs_type,
+            str(self.amount), self.content, self.method, str(self.seq),
+        ])
         return hashlib.sha1(raw.encode('utf-8')).hexdigest()[:16]
 
     @property
@@ -149,6 +166,7 @@ def _parse_transactions(ws, owner: str) -> list[Transaction]:
         )
 
     out = []
+    seen = {}   # 같은 파일 안에서 완전히 동일한 행이 몇 번째로 나왔는지
     for row in rows:
         date = _as_date(row[0])
         if date is None:
@@ -156,6 +174,10 @@ def _parse_transactions(ws, owner: str) -> list[Transaction]:
         amount = abs(_as_int(row[6]))
         if amount == 0 and not _text(row[5]):
             continue
+        key = (date, _as_time(row[1]), _text(row[2]), amount, _text(row[5]),
+               _text(row[8]) if len(row) > 8 else '')
+        seq = seen.get(key, 0)
+        seen[key] = seq + 1
         out.append(Transaction(
             date=date,
             time=_as_time(row[1]),
@@ -167,6 +189,7 @@ def _parse_transactions(ws, owner: str) -> list[Transaction]:
             method=_text(row[8]) if len(row) > 8 else '',
             memo=_text(row[9]) if len(row) > 9 else '',
             owner=owner,
+            seq=seq,
         ))
     return out
 
