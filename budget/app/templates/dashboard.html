@@ -37,8 +37,37 @@
     </span>
   {% endfor %}
 
+  {% if data.once_amount or data.plain %}
+    <a class="btn {{ 'ghost' if not data.plain }}"
+       href="{{ url_for('dashboard', month=data.month, owner=data.owner or None, plain=None if data.plain else 1) }}">
+      {{ '일회성 포함해서 보기' if data.plain else '일회성 빼고 보기' }}
+    </a>
+  {% endif %}
   <a class="btn ghost" href="{{ url_for('export_xlsx') }}">엑셀 내려받기</a>
 </div>
+
+{% if data.spike_pending %}
+<section class="card spike">
+  <h2>평소와 다른 큰 거래 {{ data.spike_pending }}건이 확인을 기다립니다</h2>
+  <p class="note">
+    큰 거래가 섞여 있으면 평소 씀씀이가 가려집니다. 일회성인지 아닌지 정해주세요.
+  </p>
+  <div class="actions"><a class="btn" href="{{ url_for('review') }}">확인하러 가기</a></div>
+</section>
+{% endif %}
+
+{% if data.once_amount %}
+<section class="card">
+  <h2>이번 달 일회성 지출 ₩{{ '{:,}'.format(data.once_amount) }}</h2>
+  <p class="note">
+    {% if data.plain %}
+      지금 화면은 이 금액을 <b>뺀</b> 평소 씀씀이입니다.
+    {% else %}
+      지금 화면은 이 금액을 <b>포함한</b> 전체입니다. 평소 씀씀이만 보려면 위 버튼을 누르세요.
+    {% endif %}
+  </p>
+</section>
+{% endif %}
 
 <div class="kpis" id="kpis"></div>
 

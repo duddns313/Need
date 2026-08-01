@@ -44,6 +44,7 @@ class Transaction:
     rule: str = ''        # 어떤 규칙으로 분류됐는지 (되돌리기·설명용)
     shared: bool = False  # 공동비용 여부
     offset_with: str = '' # 부부간 이체로 상계된 상대 거래 uid
+    spike: str = ''       # '' 미확인 | 'once' 일회성(평소 계산 제외) | 'normal' 평소
 
     @property
     def uid(self) -> str:

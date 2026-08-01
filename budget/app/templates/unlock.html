@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>가계부 잠금</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="wrap" style="max-width:380px;margin-top:12vh">
+  <h1>가계부</h1>
+  <p class="sub">폰에서 접속했습니다. 암호를 넣어주세요.</p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <section class="card">
+    <form method="post" action="{{ url_for('unlock') }}">
+      <label class="field">
+        <span class="lab">접속 암호</span>
+        <input type="password" name="pin" inputmode="numeric" pattern="[0-9]*"
+               autocomplete="off" autofocus placeholder="숫자">
+      </label>
+      <div class="actions"><button type="submit">열기</button></div>
+    </form>
+  </section>
+
+  <p class="mock">
+    암호는 PC의 가계부 <b>설정</b> 화면에서 정합니다.
+    같은 와이파이에 있는 기기만 접속할 수 있습니다.
+  </p>
+</div>
+</body>
+</html>

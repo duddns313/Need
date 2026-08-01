@@ -14,10 +14,13 @@ import webbrowser
 from pathlib import Path
 
 from flask import (
-    Flask, flash, redirect, render_template, request, send_file, url_for,
+    Flask, flash, redirect, render_template, request, send_file, session, url_for,
 )
 
-from . import ai_classify, aggregate, categories as cat, classifier, couple, parser, places, store
+from . import (
+    ai_classify, aggregate, categories as cat, classifier, couple, outliers,
+    parser, places, store,
+)
 from .paths import EXPORTS, PLACES_CACHE, USER_RULES, bundle_root, ensure_dirs
 
 app = Flask(
@@ -27,6 +30,58 @@ app = Flask(
 )
 app.secret_key = secrets.token_hex(32)
 app.config['MAX_CONTENT_LENGTH'] = 52428800   # 50MB — 뱅샐 엑셀은 보통 1MB 미만
+
+LOOPBACK = ('127.0.0.1', '::1', 'localhost')
+
+
+def local_ip() -> str:
+    """같은 와이파이에서 접속할 때 쓰는 이 PC의 주소."""
+    import socket
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(('8.8.8.8', 80))    # 실제로 보내지 않는다. 경로만 물어본다
+        return probe.getsockname()[0]
+    except OSError:
+        return '127.0.0.1'
+    finally:
+        probe.close()
+
+
+@app.before_request
+def guard_remote():
+    """폰 등 다른 기기에서 들어오면 접속 암호를 받는다.
+
+    이 PC(127.0.0.1)에서 여는 경우는 묻지 않는다. 같은 와이파이의 다른 기기가
+    들어올 때만 막는다 — 통장 내역이 들어 있는 화면이라 그냥 열어둘 수 없다.
+    """
+    if request.remote_addr in LOOPBACK:
+        return None
+    if request.endpoint in ('static', 'unlock'):
+        return None
+    settings = store.load_settings()
+    pin = settings.get('access_pin', '')
+    if not pin:
+        return ('<meta charset="utf-8"><p style="font:16px system-ui;padding:24px">'
+                '이 PC의 가계부 <b>설정</b> 화면에서 "폰에서 접속 허용"을 켜고 '
+                '접속 암호를 정해 주세요.</p>', 403)
+    if session.get('unlocked') == pin:
+        return None
+    return redirect(url_for('unlock'))
+
+
+@app.route('/unlock', methods=['GET', 'POST'])
+def unlock():
+    settings = store.load_settings()
+    pin = settings.get('access_pin', '')
+    if request.remote_addr in LOOPBACK:
+        return redirect(url_for('home'))
+    if request.method == 'POST':
+        if pin and request.form.get('pin', '').strip() == pin:
+            session['unlocked'] = pin
+            session.permanent = True
+            return redirect(url_for('home'))
+        flash('암호가 맞지 않습니다.', 'error')
+    return render_template('unlock.html')
 
 
 # ------------------------------------------------------------------ 도우미
@@ -155,16 +210,55 @@ def review():
     if not transactions:
         return redirect(url_for('upload'))
 
+    # 폰에서 끝없이 스크롤하지 않도록 조금씩 보여준다.
+    # (안 자르면 정리 화면이 37,000px 넘게 늘어난다 — 실제로 그랬다.)
+    # 이름은 page_no — 템플릿의 `page`는 네비게이션 강조용으로 이미 쓰고 있다
+    page_no = max(1, min(int(request.args.get('page', 1) or 1), 40))
+    per_page = 12
+
+    all_queue = aggregate.unclassified(transactions)
+    all_spikes = outliers.find(transactions)
+
     return render_template(
         'review.html',
-        queue=aggregate.unclassified(transactions, limit=60),
+        queue=all_queue[:page_no * per_page],
+        queue_total=len(all_queue),
+        spikes=all_spikes[:page_no * per_page],
+        spike_total=len(all_spikes),
+        page_no=page_no,
+        per_page=per_page,
         promoted=classifier.detect_recurring_income(list(transactions)),
         candidates=classifier.detect_transfer_candidates(transactions),
+        decided=[r for r in outliers.find(transactions, include_decided=True)
+                 if r['spike']],
         options=[c for c in cat.ORDER if c != '미분류'],
         lookup_ready=bool(settings.get('kakao_key') or
                           (settings.get('naver_id') and settings.get('naver_secret'))),
         ai_ready=bool(settings.get('anthropic_key')),
     )
+
+
+@app.route('/review/spike', methods=['POST'])
+def review_spike():
+    """평소와 다른 큰 거래를 '일회성'인지 '평소'인지 사람이 정한다."""
+    state = store.load_state()
+    transactions = state['transactions']
+    decision = request.form.get('decision', '')
+    uid = request.form.get('uid', '')
+
+    if request.form.get('all_once'):
+        changed = outliers.mark_all(
+            transactions, [r['uid'] for r in outliers.find(transactions)], outliers.ONCE)
+        flash(f'{changed}건을 일회성으로 표시했습니다.', 'ok')
+    elif outliers.mark(transactions, uid, decision):
+        label = {'once': '일회성', 'normal': '평소 지출', '': '미확인'}[decision]
+        flash(f'{label}으로 표시했습니다.', 'ok')
+    else:
+        flash('표시하지 못했습니다.', 'error')
+        return redirect(url_for('review'))
+
+    store.save_state(transactions, assets=state.get('assets'))
+    return redirect(url_for('review'))
 
 
 @app.route('/review/set', methods=['POST'])
@@ -260,6 +354,15 @@ def dashboard():
     owner = request.args.get('owner') or ''
     owner = owner if owner in store.owner_labels(settings) else None
 
+    # '일회성' 거래를 빼고 평소 씀씀이만 보는 모드
+    plain = bool(request.args.get('plain'))
+    once_amount = outliers.once_total(transactions, month, owner)
+    if plain:
+        transactions = outliers.without_once(transactions)
+        months = aggregate.months_of(transactions) or months
+        if month not in months:
+            month = months[-1]
+
     idx = months.index(month)
     prev = months[idx - 1] if idx > 0 else month
 
@@ -292,6 +395,9 @@ def dashboard():
         'n_tx': len(transactions),
         'owners': store.owner_labels(settings),
         'uploaded': sorted(assets.keys()),
+        'plain': plain,
+        'once_amount': once_amount,
+        'spike_pending': len(outliers.find(state['transactions'])),
     }
     return render_template('dashboard.html', data=data)
 
@@ -305,7 +411,12 @@ def settings_page():
             'husband_name': form.get('husband_name', '남편').strip() or '남편',
             'wife_name': form.get('wife_name', '아내').strip() or '아내',
             'split': form.get('split', 'half'),
+            'lan_enabled': bool(form.get('lan_enabled')),
+            'access_pin': ''.join(ch for ch in form.get('access_pin', '') if ch.isdigit()),
         }
+        if updates['lan_enabled'] and len(updates['access_pin']) < 4:
+            flash('폰에서 접속하려면 숫자 4자리 이상의 암호가 필요합니다.', 'error')
+            updates['lan_enabled'] = False
 
         # 이름을 바꾸면 이미 올린 거래의 소유자도 같이 바꿔야 한다.
         # 안 그러면 거래는 '남편' 소유인데 화면은 '호현'을 찾으면서
@@ -334,7 +445,7 @@ def settings_page():
         flash('저장했습니다.', 'ok')
         return redirect(url_for('settings_page'))
 
-    return render_template('settings.html')
+    return render_template('settings.html', lan_url=f'http://{local_ip()}:8734')
 
 
 @app.route('/reset', methods=['POST'])
@@ -362,12 +473,24 @@ def export_xlsx():
 # ------------------------------------------------------------------ 실행
 def serve(port: int = 8734, open_browser: bool = True) -> None:
     ensure_dirs()
+    settings = store.load_settings()
+    lan = bool(settings.get('lan_enabled')) and len(settings.get('access_pin', '')) >= 4
+    host = '0.0.0.0' if lan else '127.0.0.1'
+
     url = f'http://127.0.0.1:{port}/'
     if open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    print(f'가계부가 열렸습니다: {url}\n종료하려면 이 창에서 Ctrl+C 를 누르세요.')
+
+    print(f'가계부가 열렸습니다: {url}')
+    if lan:
+        print(f'폰에서는 같은 와이파이로 접속: http://{local_ip()}:{port}')
+        print('  (접속하면 설정해 둔 숫자 암호를 물어봅니다)')
+    else:
+        print('폰에서 쓰려면 설정 화면에서 "폰에서 접속 허용"을 켜세요.')
+    print('종료하려면 이 창에서 Ctrl+C 를 누르세요.')
+
     try:
         from waitress import serve as waitress_serve
-        waitress_serve(app, host='127.0.0.1', port=port, threads=4)
+        waitress_serve(app, host=host, port=port, threads=4)
     except ImportError:
-        app.run(host='127.0.0.1', port=port)
+        app.run(host=host, port=port)

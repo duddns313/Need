@@ -20,6 +20,8 @@ DEFAULT_SETTINGS = {
     'naver_secret': '',
     'anthropic_key': '',
     'split': 'half',          # half | income
+    'lan_enabled': False,     # 폰 등 같은 와이파이 기기에서 접속 허용
+    'access_pin': '',         # 위를 켰을 때 요구할 숫자 암호
     'budgets': {},            # 카테고리 -> 월 예산
     'start_balance': 0,
 }
@@ -88,13 +90,22 @@ def clear_state() -> None:
         STATE_FILE.unlink()
 
 
-def merge(existing, incoming) -> list:
-    """이미 저장된 거래에 새 거래를 합친다. uid가 같으면 새 것으로 덮어쓴다.
+#: 사람이 직접 정한 값. 같은 파일을 다시 올려도 이건 지키다.
+USER_DECISIONS = ('spike', 'shared')
 
-    덮어쓰는 이유: 사용자가 정리 화면에서 분류를 고친 뒤 같은 파일을 다시 올릴 수
-    있는데, 그때는 최신 분류가 남아야 한다.
+
+def merge(existing, incoming) -> list:
+    """이미 저장된 거래에 새 거래를 합친다.
+
+    uid가 같으면 새로 읽은 것으로 갈아끼우되, **사람이 직접 정한 값은 옮겨온다.**
+    안 그러면 같은 파일을 다시 올릴 때마다 '이건 일회성' 같은 판단이 사라진다.
+    (카테고리는 규칙 파일에 남아 있어 다시 분류되므로 옮길 필요가 없다.)
     """
     by_uid = {t.uid: t for t in existing}
     for tx in incoming:
+        previous = by_uid.get(tx.uid)
+        if previous is not None:
+            for field in USER_DECISIONS:
+                setattr(tx, field, getattr(previous, field))
         by_uid[tx.uid] = tx
     return sorted(by_uid.values(), key=lambda t: (t.date, t.time))

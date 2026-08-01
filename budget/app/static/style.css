@@ -263,3 +263,118 @@ button:disabled { opacity:.45; cursor:not-allowed; }
 code { background:var(--plane); border:1px solid var(--ring); border-radius:5px; padding:1px 6px; font-size:12.5px; }
 
 @media (max-width:700px) { .slots { grid-template-columns:1fr; } }
+
+/* ══ 폰에서 쓰기 ═══════════════════════════════════════════
+   손가락으로 누르는 화면이다. 마우스 커서와 달리 손끝은 넓고,
+   화면은 좁고, 한 손으로 잡는다. 아래 규칙은 그 전제로 잡았다. */
+
+/* 폰에서는 누르는 것이 최소 44px — 애플/구글 접근성 권고 */
+@media (max-width: 760px) {
+  body { padding:12px 12px 84px; }
+
+  h1 { font-size:19px; }
+  .sub { font-size:13px; margin-bottom:14px; }
+
+  .card { padding:14px 13px 16px; border-radius:11px; }
+  .card > h2 { font-size:13.5px; }
+
+  /* 네비게이션을 아래로 — 한 손으로 엄지가 닿는 곳 */
+  .nav {
+    position:fixed; left:0; right:0; bottom:0; z-index:40;
+    margin:0; padding:8px 10px calc(8px + env(safe-area-inset-bottom));
+    background:var(--surface); border-top:1px solid var(--ring); border-bottom:0;
+    justify-content:space-around; gap:2px;
+  }
+  .nav .brand, .nav .spacer { display:none; }
+  .nav a {
+    flex:1; text-align:center; padding:11px 4px; font-size:12px;
+    min-height:44px; display:flex; align-items:center; justify-content:center;
+  }
+
+  /* 상단 조작줄: 가로 스크롤 대신 줄바꿈 */
+  .topbar { gap:8px; }
+  .topbar > * { min-height:44px; }
+  .seg { width:100%; }
+  .seg a, .seg button { flex:1; text-align:center; padding:11px 8px; min-height:44px; }
+  select, input[type=text], input[type=password], input[type=file] {
+    min-height:44px; font-size:16px;   /* 16px 미만이면 iOS가 화면을 확대한다 */
+  }
+  button, .btn { min-height:44px; padding:12px 18px; font-size:14px; }
+
+  /* KPI는 2열 유지 (1열로 만들면 스크롤이 너무 길어진다) */
+  .kpis { gap:9px; }
+  .kpi { padding:13px 13px 12px; }
+  .kpi .val { font-size:21px; }
+  .kpi .val.hero { font-size:24px; }
+
+  .clean-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
+
+  /* 정리 화면: 좁은 폭에서 가로 배치는 무리다 */
+  .qrow { grid-template-columns:1fr; gap:10px; }
+  .qrow form { flex-direction:column; align-items:stretch; }
+  .qrow select { max-width:none; width:100%; }
+  .qrow form button { width:100%; }
+
+  .qitem { flex-wrap:wrap; }
+  .qitem .pill { order:3; }
+
+  .actions { gap:8px; }
+  .actions > *, .actions form { flex:1 1 100%; }
+  .actions form button, .actions .btn { width:100%; text-align:center; }
+
+  table { font-size:12px; }
+  th, td { padding:8px 7px; }
+
+  figcaption { display:none; }   /* 폰에는 마우스가 없다 */
+}
+
+@media (max-width: 380px) {
+  .kpis { grid-template-columns:1fr; }
+  .clean-grid { grid-template-columns:1fr; }
+}
+
+/* 손가락으로 누를 때 파란 하이라이트가 번쩍이지 않게 */
+a, button, select, .qrow { -webkit-tap-highlight-color: transparent; }
+
+/* ══ 평소와 다른 큰 거래 ═══════════════════════════════ */
+.spike { border-left:3px solid var(--warning); }
+.spike-row {
+  display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center;
+  padding:13px 14px; border:1px solid var(--ring); border-radius:10px;
+  background:var(--plane); margin-bottom:9px;
+}
+.spike-row .amt-big { font-size:17px; font-weight:650; font-variant-numeric:tabular-nums; }
+.spike-row .why { font-size:12.5px; color:var(--ink-2); margin-top:3px; }
+.spike-row .why b { color:var(--critical); font-weight:650; }
+.spike-row .when { font-size:12px; color:var(--muted); margin-top:2px; }
+.spike-row .choose { display:flex; gap:7px; }
+.spike-row .choose form { display:contents; }
+.tag {
+  font-size:11.5px; padding:3px 9px; border-radius:99px; font-weight:600;
+  border:1px solid var(--ring); color:var(--ink-2); white-space:nowrap;
+}
+.tag.once { background:rgba(250,178,25,.16); border-color:var(--warning); color:var(--ink); }
+.tag.normal { background:var(--spend-wash); border-color:var(--spend); color:var(--ink); }
+
+@media (max-width: 760px) {
+  .spike-row { grid-template-columns:1fr; }
+  .spike-row .choose { width:100%; }
+  .spike-row .choose button { flex:1; }
+}
+
+/* 접기 버튼과 체크박스도 손가락으로 누르는 것 */
+@media (max-width: 760px) {
+  summary {
+    min-height:44px; display:flex; align-items:center;
+    padding:8px 0; font-size:13.5px;
+  }
+  .check { min-height:44px; display:flex; align-items:center; gap:9px; }
+  .check input[type=checkbox] {
+    width:22px; height:22px; min-height:22px; margin:0; flex:none;
+  }
+}
+/* 데스크톱에서는 기본 크기로 (위 모바일 규칙보다 앞에 오면 안 되므로 조건을 건다) */
+@media (min-width: 761px) {
+  .check { display:flex; align-items:center; gap:8px; }
+  .check input[type=checkbox] { width:auto; min-height:0; margin:0; }
+}
