@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from . import categories as cat
@@ -27,6 +28,7 @@ class Classifier:
     def __init__(self, rules: dict | None = None, user_rules: dict | None = None):
         self.rules = rules if rules is not None else _load(DEFAULT_RULES)
         self.user_rules = user_rules if user_rules is not None else _load(USER_RULES, default={})
+        self._compiled = None
 
     # ------------------------------------------------------------------ 분류
     def classify(self, tx) -> None:
@@ -66,16 +68,30 @@ class Classifier:
                 if kw.lower() in content.lower():
                     return rule['category'], f'keyword:{kw}'
 
-        # 5. 뱅샐 대/소분류 — 긴 매치(대+소)부터 본다
+        # 5. 업종 접미사 패턴 — '독일빵집', '광주횟집'처럼 상호가 무한한 경우
+        for rule in self._patterns():
+            if rule['regex'].search(content):
+                return rule['category'], f"pattern:{rule['category']}"
+
+        # 6. 뱅샐 대/소분류 — 긴 매치(대+소)부터 본다
         banksalad = self.rules.get('banksalad_rules', [])
         for rule in sorted(banksalad, key=lambda r: -len(r['match'])):
             if self._matches(tx, rule['match']):
                 return rule['category'], 'banksalad:' + '/'.join(rule['match'])
 
-        # 6. 남은 것
+        # 7. 남은 것
         if tx.bs_type == '이체':
             return '내계좌이체', 'fallback:transfer'
         return '미분류', 'fallback'
+
+    def _patterns(self):
+        """정규식은 한 번만 컴파일해서 재사용한다 (거래 수천 건 × 규칙 수)."""
+        if self._compiled is None:
+            self._compiled = [
+                {'category': r['category'], 'regex': re.compile(r['pattern'])}
+                for r in self.rules.get('content_patterns', [])
+            ]
+        return self._compiled
 
     def _decide_income(self, content: str) -> tuple[str, str]:
         """수입 거래는 수입 카테고리 3개(급여/부수입/금융소득) 안에서만 결정한다."""
