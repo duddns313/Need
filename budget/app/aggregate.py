@@ -113,6 +113,22 @@ def excluded_total(transactions, month=None) -> dict:
     return dict(out)
 
 
+def excluded_income(transactions, month=None) -> dict:
+    """들어왔지만 소득이 아닌 돈.
+
+    대출금·배우자 송금·내 다른 계좌에서 옮겨온 돈이 여기 잡힌다.
+    이걸 소득으로 세면 저축률이 실제보다 높게 나와 가계를 잘못 읽는다.
+    """
+    out = defaultdict(int)
+    for tx in transactions:
+        if tx.nature != cat.EXCLUDED or tx.bs_type != '수입':
+            continue
+        if month and tx.month != month:
+            continue
+        out[tx.category] += tx.amount
+    return dict(out)
+
+
 def unclassified(transactions, limit=None) -> list[dict]:
     """미분류 정리 큐. 같은 상호끼리 묶어서 건수 많은 순으로."""
     groups = defaultdict(lambda: {'count': 0, 'amount': 0, 'owners': set()})

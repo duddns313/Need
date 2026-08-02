@@ -61,6 +61,23 @@ class Classifier:
         if known:
             return known, 'merchant'
 
+        # 1-3. 본인·배우자 사이 이체 — 돈이 옮겨간 것이지 쓴 것이 아니다.
+        #      방향 판정보다 먼저 해야 한다. 안 그러면 배우자가 보낸 돈이
+        #      '정기적으로 들어오는 큰 수입'으로 보여 급여로 승격된다
+        #      (실제로 1,260만원이 소득으로 부풀려져 있었다).
+        family = self.rules.get('family_names', {})
+        for name in family.get('spouse', []):
+            if name and name in content:
+                return '부부간이체', f'family:{name}'
+        for name in family.get('self', []):
+            if name and name in content:
+                return '내계좌이체', f'family:{name}'
+
+        # 1-4. 대출 실행금 — 들어온 돈이지만 소득이 아니다
+        for kw in self.rules.get('loan_keywords', []):
+            if kw in content:
+                return '대출실행', f'loan:{kw}'
+
         # 2. 방향을 먼저 존중한다.
         #    돈이 들어온 거래에 '교통' 같은 지출 카테고리를 붙이면 안 된다.
         #    (실제로 '공항철도(주)'가 준 급여 3,400만원이 지출 키워드에 걸려
@@ -105,13 +122,27 @@ class Classifier:
         return self._compiled
 
     def _decide_income(self, content: str) -> tuple[str, str]:
-        """수입 거래는 수입 카테고리 3개(급여/부수입/금융소득) 안에서만 결정한다."""
-        for kw in self.rules.get('income_finance_keywords', []):
+        """들어온 돈을 가른다. 먼저 '소득이 아닌 입금'부터 걷어낸다.
+
+        통장에 찍힌 입금을 전부 소득으로 세면 저축률이 부풀려진다. 실제 파일에서
+        '8월 카드값'·'카드비용'·'호현3월카드'로 들어온 585만원이 부수입으로 잡혀
+        있었는데, 이건 카드값을 메우려고 배우자가 보낸 돈이다. 나가는 카드대금은
+        이미 지출에서 빼 놓았으니, 들어오는 쪽도 빼야 앞뒤가 맞는다.
+        """
+        # 환불이 먼저다. '씨티카드환급'은 카드가 아니라 환불로 읽어야 한다.
+        for kw in self.rules.get('income_refund_keywords', []):
             if kw in content:
-                return '금융소득', f'income:{kw}'
+                return '환불·취소', f'refund:{kw}'
+        # 급여가 카드보다 먼저다. 카드사에 다니는 사람의 월급을 뺏으면 안 된다.
         for kw in self.rules.get('income_salary_keywords', []):
             if kw in content:
                 return '급여', f'income:{kw}'
+        for kw in self.rules.get('income_card_keywords', []):
+            if kw in content:
+                return '카드대금', f'card-in:{kw}'
+        for kw in self.rules.get('income_finance_keywords', []):
+            if kw in content:
+                return '금융소득', f'income:{kw}'
         return '부수입', 'income:fallback'
 
     @staticmethod
@@ -169,6 +200,70 @@ def detect_recurring_income(transactions) -> list[dict]:
         })
     promoted.sort(key=lambda r: -r['amount'])
     return promoted
+
+
+LOAN_MIN_AMOUNT = 1_000_000     # 이보다 작은 대출은 금액 일치가 우연일 수 있다
+
+
+def detect_loan_disbursements(transactions, loans) -> list[dict]:
+    """대출 원금과 금액이 딱 맞는 입금을 찾아 '대출실행'으로 내린다.
+
+    대출금은 통장에 들어오지만 소득이 아니라 빚이다. 이걸 수입으로 세면
+    저축률이 실제보다 높게 나와서, 가계가 잘 굴러가는 줄 착각하게 된다.
+
+    문제는 이름으로 못 잡는 경우다. 실제 파일에는 '351-004-618299' 처럼
+    계좌번호만 찍힌 입금 1,210만원이 있었는데, 같은 파일의 뱅샐현황 시트에
+    원금 1,210만원짜리 대출이 그대로 적혀 있었다. 이름은 못 읽어도
+    **금액이 정확히 일치**하면 우연으로 보기 어렵다.
+
+    되돌릴 수 있게, 무엇을 왜 내렸는지 목록으로 돌려준다.
+    """
+    principals = {}
+    for loan in loans or []:
+        amount = (loan.extra or {}).get('원금') or loan.amount
+        if amount and amount >= LOAN_MIN_AMOUNT:
+            principals.setdefault(int(amount), loan.name)
+
+    moved, accounts = [], set()
+    for tx in transactions:
+        if tx.nature != cat.INCOME or tx.amount not in principals:
+            continue
+        tx.category = '대출실행'
+        tx.nature = cat.EXCLUDED
+        tx.rule = 'loan-principal-match'
+        accounts.add(_digits(tx.content))
+        moved.append({
+            'date': tx.date.isoformat(), 'owner': tx.owner, 'content': tx.content,
+            'amount': tx.amount, 'loan': principals[tx.amount], 'kind': '실행',
+        })
+
+    # 대출금이 들어온 그 계좌로 다시 나가는 돈은 상환이다.
+    # 실제 파일에선 분기마다 그 계좌로 나간 378,000원이 뱅샐 대분류만 보고
+    # '온라인쇼핑'과 '문화/여가'로 흩어져 있었다. 합쳐서 1,138,000원인데,
+    # 같은 파일의 대출 원금(1,210만)에서 잔액(1,096만)을 뺀 값과 정확히 같다.
+    accounts.discard('')
+    for tx in transactions:
+        if tx.bs_type == '수입' or _digits(tx.content) not in accounts:
+            continue
+        tx.category = '대출원금상환'
+        tx.nature = cat.SAVING
+        tx.rule = 'loan-account-match'
+        moved.append({
+            'date': tx.date.isoformat(), 'owner': tx.owner, 'content': tx.content,
+            'amount': tx.amount, 'loan': '', 'kind': '상환',
+        })
+
+    moved.sort(key=lambda r: -r['amount'])
+    return moved
+
+
+def _digits(content: str) -> str:
+    """계좌번호만 남긴다. 'J351004618299'와 '351-004-618299'를 같은 것으로 본다.
+
+    짧은 숫자는 우연히 겹치므로 계좌번호로 치지 않는다.
+    """
+    only = re.sub(r'\D', '', content or '')
+    return only if len(only) >= 10 else ''
 
 
 TRANSFER_MIN_AMOUNT = 500_000
