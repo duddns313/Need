@@ -47,6 +47,12 @@ CATEGORIES = {
     '세금·기타': VARIABLE,
     '미분류': VARIABLE,
     # 저축·투자
+    # 연금저축·IRP·청약·ISA는 그냥 저축이 아니라 '세금을 깎아 주는 저축'이다.
+    # 뭉뚱그리면 한도를 얼마나 썼는지 알 수 없어서 매년 환급을 놓친다.
+    '연금저축': SAVING,
+    'IRP·퇴직연금': SAVING,
+    '주택청약': SAVING,
+    'ISA': SAVING,
     '저축·예금': SAVING,
     '투자': SAVING,
     '대출원금상환': SAVING,

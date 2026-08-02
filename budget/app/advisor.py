@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import math
 import statistics as st
 from collections import defaultdict
 
@@ -33,6 +34,16 @@ MAX_CUT = 0.40           # 한 항목에서 요구할 수 있는 최대 절감�
 SAVING_GOOD, SAVING_WATCH = 0.30, 0.15      # 저축률
 FIXED_GOOD, FIXED_WATCH = 0.35, 0.50        # 수입 대비 고정비
 EATOUT_GOOD, EATOUT_WATCH = 0.50, 0.70      # 먹는 돈 중 사먹는 비중
+
+
+def _r(x) -> int:
+    """0.5는 위로 올린다.
+
+    파이썬 기본 round()는 0.5를 짝수 쪽으로 보낸다(303396.5 -> 303396).
+    폰 화면은 자바스크립트로 같은 계산을 하는데 거기선 위로 올라간다(303397).
+    두 화면이 1원씩 다르면 어느 쪽이 맞는지 설명할 방법이 없다. 위로 맞춘다.
+    """
+    return int(math.floor(x + 0.5))
 
 
 def _months(transactions) -> list[str]:
@@ -61,10 +72,10 @@ def baseline(transactions, months=None) -> dict:
     income, spend = med('수입'), med('지출')
     return {
         'months': recent,
-        '수입': round(income), '지출': round(spend),
-        '고정비': round(med('고정비')), '변동비': round(med('변동비')),
-        '저축투자': round(med('저축투자')),
-        '남는 돈': round(income - spend),
+        '수입': _r(income), '지출': _r(spend),
+        '고정비': _r(med('고정비')), '변동비': _r(med('변동비')),
+        '저축투자': _r(med('저축투자')),
+        '남는 돈': _r(income - spend),
         '저축률': round((income - spend) / income, 4) if income else 0.0,
     }
 
@@ -176,7 +187,7 @@ def actions(transactions, top=5) -> list[dict]:
         per_month = monthly_by_category(transactions, category)
         values = [per_month.get(m, 0) for m in recent]
         active = sum(1 for v in values if v > 0)
-        if active < max(2, round(len(recent) * HABIT_RATIO)):
+        if active < max(2, _r(len(recent) * HABIT_RATIO)):
             continue                      # 습관이 아니라 어쩌다 쓴 항목
 
         now = st.median(values)
@@ -196,7 +207,7 @@ def actions(transactions, top=5) -> list[dict]:
         if saving < 10_000:      # 아껴봐야 티도 안 나는 건 말하지 않는다
             continue
 
-        why = (f'최근 {len(recent)}달 중 적게 쓴 달은 {round(min(best)):,}원이었습니다. '
+        why = (f'최근 {len(recent)}달 중 적게 쓴 달은 {_r(min(best)):,}원이었습니다. '
                f'해본 수준입니다.')
         if capped:
             why = (f'적게 쓴 달은 더 낮았지만, 한 번에 {MAX_CUT*100:.0f}% 넘게 줄이는 건 '
@@ -204,8 +215,8 @@ def actions(transactions, top=5) -> list[dict]:
 
         rows.append({
             'category': category,
-            'now': round(now), 'goal': round(goal),
-            'save_month': round(saving), 'save_year': round(saving * 12),
+            'now': _r(now), 'goal': _r(goal),
+            'save_month': _r(saving), 'save_year': _r(saving * 12),
             'cut': round(saving / now, 3) if now else 0,
             'capped': capped,
             'why': why,
@@ -221,7 +232,7 @@ def goal_plan(transactions, target_rate: float) -> dict:
     if not base:
         return {}
     income = base['수입']
-    need_spend = round(income * (1 - target_rate))
+    need_spend = _r(income * (1 - target_rate))
     gap = base['지출'] - need_spend
 
     plan, running = [], 0
@@ -231,7 +242,7 @@ def goal_plan(transactions, target_rate: float) -> dict:
                 break
             take = min(row['save_month'], gap - running)
             running += take
-            plan.append({**row, 'take': round(take)})
+            plan.append({**row, 'take': _r(take)})
 
     return {
         'target_rate': target_rate,
@@ -239,9 +250,9 @@ def goal_plan(transactions, target_rate: float) -> dict:
         'income': income,
         'spend_now': base['지출'],
         'spend_target': need_spend,
-        'gap': round(max(gap, 0)),
-        'covered': round(running),
-        'short': round(max(gap - running, 0)),
+        'gap': _r(max(gap, 0)),
+        'covered': _r(running),
+        'short': _r(max(gap - running, 0)),
         'reachable': gap <= 0 or running >= gap,
         'plan': plan,
     }
@@ -273,8 +284,8 @@ def leaks(transactions, months_seen=3) -> list[dict]:
             'content': content, 'category': g['category'],
             'months': len(g['months']), 'count': g['count'],
             'amount': g['amount'],
-            'per_month': round(g['amount'] / len(g['months'])),
-            'per_year': round(g['amount'] / len(g['months']) * 12),
+            'per_month': _r(g['amount'] / len(g['months'])),
+            'per_year': _r(g['amount'] / len(g['months']) * 12),
         })
     out.sort(key=lambda r: -r['per_year'])
     return out

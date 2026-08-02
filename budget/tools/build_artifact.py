@@ -11,8 +11,6 @@ PC 없이 쓰고 싶다는 요구에서 나온 도구다. 뱅샐 엑셀을 넣�
 from __future__ import annotations
 
 import argparse
-import csv
-import io
 import json
 import sys
 from pathlib import Path
@@ -21,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT.parent))
 
 from budget.app import (  # noqa: E402
-    advisor, aggregate, categories as cat, classifier, couple, outliers, parser,
+    categories as cat, classifier, couple, parser,
 )
 
 TEMPLATE = ROOT / 'design' / 'artifact_template.html'
@@ -68,54 +66,36 @@ def load(paths_and_owners) -> tuple[list, dict]:
     return txs, wealth
 
 
-def per_month(txs, month) -> dict:
-    """화면이 달을 넘길 때마다 쓰는 한 달치 묶음."""
-    s = aggregate.summary(txs, month)
-    exp = {}
-    for nature in (cat.FIXED, cat.VARIABLE):
-        exp.update(aggregate.totals_by_category(txs, nature=nature, month=month))
-    return {
-        'income': s['수입'], 'fixed': s['고정비'],
-        'variable': s['변동비'], 'saving': s['저축투자'],
-        'exp_cat': {k: v for k, v in exp.items() if v > 0},
-        'inc_cat': aggregate.totals_by_category(txs, nature=cat.INCOME, month=month),
-        'sav_cat': aggregate.totals_by_category(txs, nature=cat.SAVING, month=month),
-        'food': {k: exp.get(k, 0) for k in FOOD},
-    }
+def rows_of(txs) -> list[dict]:
+    """거래 원본. 화면에서 분류를 고칠 수 있으려면 집계된 숫자가 아니라
+    거래 자체를 들고 있어야 한다.
 
-
-def to_csv(txs) -> str:
-    buf = io.StringIO()
-    w = csv.writer(buf, lineterminator='\n')
-    w.writerow(['날짜', '사람', '내용', '금액', '성격', '카테고리', '결제수단', '원본타입'])
+    폰으로 받는 파일이라 글자 수가 곧 무게다. 키를 한 글자로 줄인다.
+      u 식별자 · d 날짜 · o 사람 · c 내용 · a 금액 · k 카테고리
+      t 뱅샐 원본 타입 · m 결제수단 · r 어떤 규칙으로 분류됐는지
+    """
+    out = []
     for tx in sorted(txs, key=lambda t: (t.date, t.time)):
-        w.writerow([tx.date.isoformat(), tx.owner, tx.content, tx.amount,
-                    tx.nature, tx.category, tx.method, tx.bs_type])
-    return buf.getvalue()
+        out.append({
+            'u': tx.uid, 'd': tx.date.isoformat(), 'o': tx.owner,
+            'c': tx.content, 'a': tx.amount, 'k': tx.category,
+            't': tx.bs_type, 'm': tx.method, 'r': tx.rule,
+        })
+    return out
 
 
 def build(txs, wealth, owner_label: str) -> dict:
-    months = aggregate.months_of(txs)
     dates = [t.date for t in txs]
-    unc = aggregate.unclassified(txs)
     return {
         'owner': owner_label,
+        'owners': sorted({t.owner for t in txs}),
         'range': [min(dates).isoformat(), max(dates).isoformat()],
-        'n_tx': len(txs),
-        'months': months,
-        'per': {m: per_month(txs, m) for m in months},
-        'baseline': advisor.baseline(txs),
-        'health': advisor.health(txs),
-        'actions': advisor.actions(txs, top=8),
-        'leaks': advisor.leaks(txs),
-        'food': advisor.food(txs),
-        'excluded': aggregate.excluded_total(txs),
-        'excluded_in': aggregate.excluded_income(txs),
-        'unclassified': unc[:30],
-        'unclassified_n': sum(r['count'] for r in unc),
-        'spikes': outliers.find(txs),
+        'rows': rows_of(txs),
+        # 카테고리 -> 성격. 화면에서 분류를 바꾸면 성격도 따라 바뀌어야 한다.
+        'cats': dict(cat.CATEGORIES),
+        'order': list(cat.ORDER),
+        'food_keys': FOOD,
         **wealth,
-        'csv': to_csv(txs),
     }
 
 
@@ -147,10 +127,12 @@ def main() -> int:
         Path(args.json).write_text(
             json.dumps(data, ensure_ascii=False, indent=1), encoding='utf-8')
 
-    b = data['baseline']
+    from budget.app import advisor
+    b = advisor.baseline(txs)
+    unknown = sum(1 for t in txs if t.category == '미분류')
     print(f"거래 {len(txs):,}건 · {data['range'][0]} ~ {data['range'][1]}")
     print(f"보통 달  수입 {b['수입']:,} / 지출 {b['지출']:,} / 저축률 {b['저축률']*100:.0f}%")
-    print(f"미분류 {data['unclassified_n']}건 · 큰 거래 {len(data['spikes'])}건")
+    print(f"미분류 {unknown}건 · 화면 데이터 {len(payload)/1024:.0f}KB")
     print(f"→ {args.out}")
     return 0
 

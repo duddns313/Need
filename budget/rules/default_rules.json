@@ -30,6 +30,36 @@
   ],
   "content_rules": [
     {
+      "category": "연금저축",
+      "keywords": [
+        "연금저축",
+        "연금펀드"
+      ]
+    },
+    {
+      "category": "IRP·퇴직연금",
+      "keywords": [
+        "IRP",
+        "개인형퇴직연금",
+        "퇴직연금"
+      ]
+    },
+    {
+      "category": "주택청약",
+      "keywords": [
+        "주택청약",
+        "청약저축",
+        "청약종합"
+      ]
+    },
+    {
+      "category": "ISA",
+      "keywords": [
+        "ISA",
+        "중개형아이에스에이"
+      ]
+    },
+    {
       "category": "통신",
       "keywords": [
         "SK텔레콤",
