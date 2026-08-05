@@ -41,15 +41,32 @@ def load(paths_and_owners, pay_files=()) -> tuple[list, dict]:
         files.append(pf)
         txs.extend(pf.transactions)
 
+    # 영수증 파일은 여러 개로 나눠 받게 된다(달마다, 카드/현금 따로). 같은 건이
+    # 여러 파일에 겹쳐 들어오므로 한 번에 모아 놓고 중복을 걷어낸 뒤 붙인다.
+    # 안 그러면 같은 결제가 두 거래에 각각 붙어 엉뚱한 이름이 생긴다.
+    receipts, seen = [], set()
     for path in pay_files or ():
         got = payexport.parse(path)
-        res = payexport.apply_names(txs, got.rows)
-        print(f"  간편결제 {Path(path).name} — {got.source}, {len(got.rows)}줄")
+        fresh = 0
+        for r in got.rows:
+            key = (r.when, r.amount, r.raw_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            receipts.append(r)
+            fresh += 1
+        dup = len(got.rows) - fresh
+        print(f"  영수증 {Path(path).name} — {got.source}, {len(got.rows)}줄"
+              + (f" (겹치는 {dup}줄 제외)" if dup else ""))
+
+    if receipts:
+        res = payexport.apply_names(txs, receipts)
+        print(f"  모두 {len(receipts)}건")
         print(f"      이름 채움      {len(res['filled']):>3}건  (네이버페이 → 상품명)")
         print(f"      메모만 붙임    {len(res['noted']):>3}건  (상호는 이미 있음)")
         print(f"      기간 밖        {len(res['outside']):>3}건")
         print(f"      짝 못 찾음     {len(res['missed']):>3}건")
-        for r in res['missed'][:5]:
+        for r in res['missed'][:6]:
             print(f"          {r.day}  {r.amount:>9,}  {r.name}")
 
     engine = classifier.Classifier()
