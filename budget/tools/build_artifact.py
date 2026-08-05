@@ -44,10 +44,13 @@ def load(paths_and_owners, pay_files=()) -> tuple[list, dict]:
     for path in pay_files or ():
         got = payexport.parse(path)
         res = payexport.apply_names(txs, got.rows)
-        print(f"  간편결제 {Path(path).name}: {len(got.rows)}줄 읽어 "
-              f"{len(res['filled'])}건 이름 채움, {len(res['missed'])}건 짝 없음")
+        print(f"  간편결제 {Path(path).name} — {got.source}, {len(got.rows)}줄")
+        print(f"      이름 채움      {len(res['filled']):>3}건  (네이버페이 → 상품명)")
+        print(f"      메모만 붙임    {len(res['noted']):>3}건  (상호는 이미 있음)")
+        print(f"      기간 밖        {len(res['outside']):>3}건")
+        print(f"      짝 못 찾음     {len(res['missed']):>3}건")
         for r in res['missed'][:5]:
-            print(f"      짝 없음  {r.day}  {r.amount:>9,}  {r.name}")
+            print(f"          {r.day}  {r.amount:>9,}  {r.name}")
 
     engine = classifier.Classifier()
     engine.classify_all(txs)

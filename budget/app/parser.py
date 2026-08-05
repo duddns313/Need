@@ -45,6 +45,7 @@ class Transaction:
     shared: bool = False  # 공동비용 여부
     offset_with: str = '' # 부부간 이체로 상계된 상대 거래 uid
     spike: str = ''       # '' 미확인 | 'once' 일회성(평소 계산 제외) | 'normal' 평소
+    orig_content: str = '' # 이름을 바꾸기 전의 원본 (uid를 붙들어 두는 용도)
 
     @property
     def uid(self) -> str:
@@ -62,9 +63,14 @@ class Transaction:
           - `seq`(파일 내 등장 순번): (2)를 살린다. 같은 파일을 두 번 넣으면 두 번째
             파일의 순번도 0,1,2… 로 같게 매겨지므로 (1)은 여전히 합쳐진다.
         """
+        # 이름은 나중에 바뀔 수 있다. 네이버페이 영수증을 붙이면 '네이버페이'가
+        # '핑기 실리카겔 제습제'가 된다. 그때 키까지 바뀌면 화면에 저장해 둔
+        # 사용자의 결정(분류 수정·일회성 표시)이 통째로 떨어져 나간다.
+        # 그래서 키는 언제나 원본 이름으로 만든다.
         raw = '|'.join([
             self.owner, str(self.date), self.time, self.bs_type,
-            str(self.amount), self.content, self.method, str(self.seq),
+            str(self.amount), self.orig_content or self.content,
+            self.method, str(self.seq),
         ])
         return hashlib.sha1(raw.encode('utf-8')).hexdigest()[:16]
 

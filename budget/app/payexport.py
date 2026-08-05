@@ -23,7 +23,8 @@ import openpyxl
 
 # 열 이름이 앱마다 조금씩 다르다. 뜻이 같은 것끼리 묶어 둔다.
 COLUMNS = {
-    'date': ['결제일자', '거래일시', '거래일자', '이용일자', '승인일자', '일시', '날짜'],
+    'date': ['결제일자', '발행일자', '거래일시', '거래일자', '이용일자', '승인일자',
+             '일시', '날짜'],
     'name': ['상품명', '가맹점', '가맹점명', '내용', '거래내용', '적요', '이용처'],
     'amount': ['합계', '승인금액', '거래금액', '이용금액', '결제금액', '금액'],
     'cancel': ['취소금액'],
@@ -47,6 +48,7 @@ class Receipt:
     issuer: str = ''
     cancelled: bool = False
     raw_name: str = ''
+    sheet: str = ''
 
     @property
     def day(self) -> date:
@@ -58,6 +60,8 @@ class PayFile:
     path: str
     rows: list[Receipt] = field(default_factory=list)
     source: str = ''
+    sheets: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)
 
     @property
     def total(self) -> int:
@@ -88,13 +92,28 @@ def _find_header(ws) -> tuple[int, dict]:
 
 
 def _as_dt(value):
+    """날짜 칸이 시트마다 다르다.
+
+    카드영수증은 '2025-09-20 23:08:59', 현금영수증은 '20250709192100' 처럼
+    붙여 쓴 열네 자리다. 둘 다 받는다.
+    """
     if isinstance(value, datetime):
         return value
     if isinstance(value, date):
         return datetime(value.year, value.month, value.day)
     if not value:
         return None
-    text = str(value).strip().replace('.', '-').replace('/', '-')
+    text = str(value).strip()
+
+    digits = ''.join(ch for ch in text if ch.isdigit())
+    if len(digits) in (8, 12, 14) and text.replace(' ', '').isdigit():
+        fmt = {8: '%Y%m%d', 12: '%Y%m%d%H%M', 14: '%Y%m%d%H%M%S'}[len(digits)]
+        try:
+            return datetime.strptime(digits, fmt)
+        except ValueError:
+            pass
+
+    text = text.replace('.', '-').replace('/', '-')
     for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d', '%Y%m%d'):
         try:
             return datetime.strptime(text[:len(fmt) + 4].strip(), fmt)
@@ -129,30 +148,47 @@ def _shorten(name: str) -> str:
 
 
 def parse(path) -> PayFile:
-    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
-    ws = wb.active
-    header, cols = _find_header(ws)
+    """시트를 전부 읽는다.
 
-    out = PayFile(path=str(path), source=ws.title)
-    for row in ws.iter_rows(min_row=header + 1, values_only=False):
-        get = lambda key: (row[cols[key] - 1].value if key in cols else None)
-        when = _as_dt(get('date'))
-        amount = _as_int(get('amount'))
-        raw = get('name')
-        if not when or not amount or not raw:
+    네이버페이는 달마다 시트를 따로 만들고, 카드영수증과 현금영수증을
+    한 파일에 섞어 넣는다(열 구성도 다르다). 첫 시트만 읽으면 1년치 중
+    한 달만 들어온다 — 실제로 그렇게 놓칠 뻔했다.
+    """
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    out = PayFile(path=str(path))
+    skipped = []
+
+    for ws in wb.worksheets:
+        try:
+            header, cols = _find_header(ws)
+        except PayParseError:
+            skipped.append(ws.title)
             continue
-        out.rows.append(Receipt(
-            when=when, name=_shorten(raw), raw_name=' '.join(str(raw).split()),
-            amount=amount, issuer=str(get('issuer') or '').strip(),
-            cancelled=bool(_as_int(get('cancel'))) or bool(_as_dt(get('cancel_date'))),
-        ))
+        out.sheets.append(ws.title)
+        for row in ws.iter_rows(min_row=header + 1, values_only=True):
+            get = lambda key: (row[cols[key] - 1] if key in cols and cols[key] - 1 < len(row)
+                               else None)
+            when = _as_dt(get('date'))
+            amount = _as_int(get('amount'))
+            raw = get('name')
+            if not when or not amount or not raw:
+                continue
+            out.rows.append(Receipt(
+                when=when, name=_shorten(raw), raw_name=' '.join(str(raw).split()),
+                amount=amount, issuer=str(get('issuer') or '').strip(),
+                sheet=ws.title,
+                cancelled=bool(_as_int(get('cancel'))) or bool(_as_dt(get('cancel_date'))),
+            ))
     wb.close()
+    out.skipped = skipped
+    out.source = f'{len(out.sheets)}개 시트'
     if not out.rows:
         raise PayParseError('읽을 수 있는 거래가 한 줄도 없습니다.')
     return out
 
 
-DAY_TOLERANCE = 3      # 카드 승인일과 페이 결제일이 하루이틀 어긋난다
+DAY_TOLERANCE = 3       # 카드 승인일과 페이 결제일이 하루이틀 어긋난다
+CASH_TOLERANCE = 20     # 현금영수증은 물건 받은 뒤에 발행되기도 한다
 
 
 def apply_names(transactions, receipts, only_vague=True) -> dict:
@@ -161,35 +197,72 @@ def apply_names(transactions, receipts, only_vague=True) -> dict:
     금액이 같고 날짜가 며칠 안쪽인 것을 짝으로 본다. 한 거래에 두 번 붙지
     않게 쓴 것은 표시해 둔다. 가까운 날짜부터 가져간다.
     """
-    pool = [t for t in transactions
-            if not only_vague or _is_vague(t)]
-    used, filled, missed = set(), [], []
+    used = set()
+    filled, noted, missed = [], [], []
+    lo = min((t.date for t in transactions), default=None)
+    hi = max((t.date for t in transactions), default=None)
+    outside = []
 
-    for r in sorted(receipts, key=lambda x: x.when):
-        if r.cancelled:
-            continue
-        best, gap = None, 99
+    def find(r, pool):
+        limit = CASH_TOLERANCE if '현금' in r.sheet else DAY_TOLERANCE
+        best, gap = None, 999
         for tx in pool:
             if id(tx) in used or tx.amount != r.amount:
                 continue
             d = abs((tx.date - r.day).days)
-            if d <= DAY_TOLERANCE and d < gap:
+            if d <= limit and d < gap:
                 best, gap = tx, d
-        if best is None:
-            missed.append(r)
-            continue
-        used.add(id(best))
-        best.content = r.name
-        best.memo = (best.memo + ' ' if best.memo else '') + r.raw_name
-        filled.append((best, r))
+        return best
 
-    return {'filled': filled, 'missed': missed, 'read': len(receipts)}
+    vague = [t for t in transactions if _is_vague(t)]
+    named = [t for t in transactions if not _is_vague(t)]
+
+    for r in sorted(receipts, key=lambda x: x.when):
+        if r.cancelled:
+            continue
+        if lo and (r.day < lo or r.day > hi):
+            outside.append(r)
+            continue
+
+        # 이름이 뭉뚱그려진 거래부터 채운다. 그게 이 파일이 필요한 이유다.
+        hit = find(r, vague)
+        if hit is not None:
+            used.add(id(hit))
+            # 원본 이름을 남겨 둔다. 키가 이 값으로 만들어지므로 이름을 바꿔도
+            # 사용자가 화면에서 해 둔 결정이 그대로 붙어 있는다.
+            hit.orig_content = hit.orig_content or hit.content
+            hit.content = r.name
+            hit.memo = (hit.memo + ' ' if hit.memo else '') + r.raw_name
+            filled.append((hit, r))
+            continue
+
+        # 이미 상호가 제대로 찍힌 거래라면 이름은 그대로 두고, 무엇을 샀는지만
+        # 메모에 붙인다. 멀쩡한 상호를 상품명으로 덮으면 오히려 알아보기 어렵다.
+        if not only_vague or True:
+            hit = find(r, named)
+            if hit is not None:
+                used.add(id(hit))
+                hit.memo = (hit.memo + ' ' if hit.memo else '') + r.raw_name
+                noted.append((hit, r))
+                continue
+
+        missed.append(r)
+
+    return {'filled': filled, 'noted': noted, 'missed': missed,
+            'outside': outside, 'read': len(receipts)}
 
 
 VAGUE_NAMES = {'네이버페이', '카카오페이', '토스', '페이코', '삼성페이', '애플페이',
-               '스마일캐시', '네이버파이낸셜', '(주)네이버파이낸셜'}
+               '스마일캐시', '네이버파이낸셜', '네이버파이낸셜㈜', '카카오페이㈜'}
 
 
 def _is_vague(tx) -> bool:
-    """이름만 남고 무엇을 샀는지는 안 남은 거래."""
-    return (tx.content or '').strip() in VAGUE_NAMES
+    """이름만 남고 무엇을 샀는지는 안 남은 거래.
+
+    '네이버파이낸셜'과 '네이버파이낸셜(주)'는 같은 것이다. 법인격 표기를
+    떼고 본다 — 안 그러면 5건이 조용히 빠진다.
+    """
+    name = ' '.join(str(tx.content or '').split())
+    for junk in ('(주)', '㈜', '주식회사', '(유)', '유한회사'):
+        name = name.replace(junk, '')
+    return name.strip() in VAGUE_NAMES
