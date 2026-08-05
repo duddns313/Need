@@ -270,6 +270,7 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
         <div class="t-sp"><div class="k">쓴 돈</div><div class="v num" id="baseOut"></div></div>
         <div class="t-sv"><div class="k">저축률</div><div class="v num" id="baseRate"></div></div>
       </div>
+      <p class="note" id="reviewHint" style="margin:12px 0 0" hidden></p>
     </div>
 
     <div class="card">
@@ -384,6 +385,17 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
   <section role="tabpanel" id="p-list" aria-labelledby="t-list" hidden>
     <h1>내역 보고 고치기</h1>
     <p class="lede">분류를 바꾸면 모든 탭의 숫자가 같이 바뀝니다.</p>
+
+    <div class="card" id="reviewCard" hidden>
+      <h2>확인해 주세요</h2>
+      <p class="sub">뱅샐은 은행 통로로 나간 돈을 전부 한 칸에 몰아넣습니다.
+        내 계좌 사이를 옮긴 것도, 남에게 부친 것도 같은 자리에 들어옵니다.
+        <b>이름만 보고는 어느 쪽인지 알 수 없는 것</b>을 모아 뒀습니다.<br>
+        지금은 <b>집 밖으로 나간 돈</b>으로 세고 있습니다. 내 계좌였다면
+        「내계좌이체」로 바꿔 주세요 — 저축률이 그만큼 올라갑니다.</p>
+      <div id="reviewList"></div>
+      <button class="chip" id="moreReview" style="width:100%; margin-top:6px" hidden></button>
+    </div>
 
     <div class="card">
       <h2>무엇을 볼까</h2>
@@ -1214,6 +1226,18 @@ function renderHome() {
   document.getElementById('baseOut').textContent = man(BASE.spend);
   document.getElementById('baseRate').textContent = (BASE.rate*100).toFixed(0) + '%';
 
+  /* 확인 안 끝난 이체가 남아 있으면 이 숫자는 아직 흔들린다. 그걸 숨기면
+     저축률이 왜 이렇게 낮은지 영영 모른 채 다이어트만 하게 된다. */
+  const rv = reviewItems(), rvSum = rv.reduce((s,e) => s + e.amount, 0);
+  const hint = document.getElementById('reviewHint');
+  hint.hidden = !rv.length;
+  if (rv.length) hint.innerHTML =
+    `위 숫자는 한 달치인데, 전체 기간으로 보면 <b>${won(rvSum)}</b>
+     (한 달 평균 <b>${won(rvSum / Math.max(MONTHS.length, 1))}</b>)이
+     내 계좌로 옮긴 건지 남에게 부친 건지 가려지지 않아 일단 <b>쓴 돈</b>으로
+     세고 있습니다. 「내역」 탭 맨 위 <b>확인해 주세요</b>에서 내 계좌로 바꾸면
+     저축률이 그만큼 올라갑니다.`;
+
   const box = document.getElementById('health');
   box.innerHTML = '';
   HEALTH.forEach(h => box.appendChild(el('div','check',
@@ -1558,8 +1582,97 @@ function catSelect(current, onPick) {
   return s;
 }
 
+/* ── 확인해 주세요
+   은행 통로로 나간 돈은 뱅샐에서 전부 한 칸에 들어온다. 내 계좌로 옮긴 것과
+   남에게 부친 것이 섞여 있는데, 후자를 이체로 두면 '안 쓴 돈'이 되어 저축률이
+   부풀려진다. 그래서 기본은 쓴 돈으로 세되, 확신이 없는 것은 여기 모아
+   두 번 눌러 되돌릴 수 있게 한다. 조용히 정하고 넘어가지 않는다. */
+const REVIEW_MIN = 100_000;
+/* 어떤 근거로 붙은 분류인지가 r.r 에 남아 있다. 이름을 눈으로 훑어 짐작하는
+   대신 그 근거를 본다 — 'family:이호현'처럼 본인 이름이 확인된 것은 물어볼
+   일이 없고, 은행 통로만 보고 넘긴 것은 물어봐야 한다. */
+const GUESSED = /^(banksalad:지출\/금융\/은행|banksalad:이체\/이체|fallback:transfer)$/;
+function reviewItems() {
+  const g = {};
+  for (const r of ROWS) {
+    const k = catOf(r), edited = !!mine.cat[r.u];
+    let why = '';
+    if (k === '개인송금')
+      why = r.c === '송금 내역'
+        ? '받는 사람이 안 남았습니다'
+        : '남에게 부친 것으로 봤습니다';
+    else if (k === '미분류' && (r.r === 'pay:가게이름-가려짐' || r.r === 'merchant'))
+      why = '결제를 대신 받아 준 회사만 남아 어느 가게인지 모릅니다';
+    else if (k === '내계좌이체' && GUESSED.test(r.r || '') && r.a >= REVIEW_MIN)
+      why = '은행 통로로 나간 것만 보고 내 계좌로 넘긴 것입니다';
+    /* 한 번 손댄 것은 확인이 끝난 것이다. 계속 물어보면 목록이 안 줄어든다. */
+    if (!why || edited) continue;
+    const n = nameOf(r), e = g[n] || (g[n] = {
+      content:n, count:0, amount:0, rows:[], why, cat:k });
+    e.count++; e.amount += r.a; e.rows.push(r);
+    if (e.cat !== k) e.cat = null;
+  }
+  /* 매달 같은 날 같은 금액이 나가면 그건 걸어 둔 자동이체다. 성격을 짚어
+     주는 것만으로 답이 나오는 경우가 많다 — 적금인지, 배우자에게 보내는
+     생활비인지는 본인이 안다. 그냥 '모르겠다'고 두는 것보다 낫다. */
+  return Object.values(g).filter(e => e.amount >= 10_000).map(e => {
+    const same = e.count >= 3 && e.rows.every(r => r.a === e.rows[0].a);
+    const days = e.rows.slice(1).map((r,i) =>
+      (dnum(r.d) - dnum(e.rows[i].d)) / DAY);
+    const monthly = same && days.every(d => d >= 25 && d <= 36);
+    return { ...e, hint: monthly
+      ? `매달 같은 날 <b>${won(e.rows[0].a)}</b>씩 나갑니다 — 걸어 둔 적금이거나
+         배우자에게 보내는 생활비일 수 있습니다.` : '' };
+  }).sort((a,b) => b.amount - a.amount);
+}
+
+let reviewShown = 6;
+function renderReview() {
+  const items = reviewItems();
+  const card = document.getElementById('reviewCard');
+  card.hidden = !items.length;
+  if (!items.length) return;
+  const box = document.getElementById('reviewList');
+  box.innerHTML = '';
+  const sum = items.reduce((s,e) => s + e.amount, 0);
+  box.appendChild(el('p','note',
+    `모두 <b>${items.length}곳 · ${won(sum)}</b>입니다. 큰 것부터 봐 주세요.`));
+  items.slice(0, reviewShown).forEach(e => {
+    const item = el('div','item',
+      `<div class="top"><span class="nm2">${esc(e.content)}</span>
+         <span class="amt num">${won(e.amount)}</span></div>
+       <div class="why">${e.why}${e.hint ? '<br>' + e.hint : ''}</div>
+       <div class="when">${e.count}건 · ${e.rows[0].d} ~ ${e.rows[e.rows.length-1].d}</div>`);
+    if (e.count > 1) {
+      const open = el('button','chip','거래 ' + e.count + '건 보기');
+      open.style.cssText = 'width:100%; margin-top:10px; min-height:40px; font-size:13px';
+      open.addEventListener('click', () => openDetail({
+        title: e.content, scope:'전체 기간', rows: e.rows, byName:false }));
+      item.appendChild(open);
+    }
+    const acts = el('div','rowacts');
+    const set = v => { e.rows.forEach(r => {
+      if (v === r.k) delete mine.cat[r.u]; else mine.cat[r.u] = v; });
+      persist(); refresh(); };
+    const own = el('button','mark','내 계좌였어요');
+    own.addEventListener('click', () => set('내계좌이체'));
+    acts.appendChild(own);
+    acts.appendChild(catSelect(e.cat, set));
+    item.appendChild(acts);
+    box.appendChild(item);
+  });
+  const more = document.getElementById('moreReview');
+  const left = items.length - reviewShown;
+  more.hidden = left <= 0;
+  more.textContent = `${left}곳 더 보기`;
+}
+document.getElementById('moreReview').addEventListener('click', () => {
+  reviewShown += 10; renderReview();
+});
+
 function renderList() {
   SPIKE_SET = new Set(SPIKES.map(s => s.u));
+  renderReview();
   renderFilters();
   const rows = currentRows();
   document.getElementById('listCount').textContent =
@@ -2249,7 +2362,8 @@ function wireTax() {
 function refresh() {
   recompute();
   renderHome(); renderMonth(); renderList(); renderGoal(); renderAsset(); renderTax();
-  const dot = (ROWS.filter(r => catOf(r) === '미분류').length || SPIKES.length) ? '<span class="dot"></span>' : '';
+  const dot = (ROWS.filter(r => catOf(r) === '미분류').length || SPIKES.length
+               || reviewItems().length) ? '<span class="dot"></span>' : '';
   document.getElementById('t-list').innerHTML = '내역' + dot;
 }
 

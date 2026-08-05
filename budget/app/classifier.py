@@ -27,6 +27,19 @@ DEFAULT_RULES = RULES_DIR / 'default_rules.json'
 USER_RULES = RULES_DIR / 'user_rules.json'
 
 
+# 사람 이름 모양. 카카오페이는 가운데를 가려서 '유*란' 처럼 온다.
+# 성 한 자 + 이름 한두 자, 별표 섞임까지만 사람으로 본다. 넉 자를 넘으면
+# 가게 이름일 가능성이 커져서 함부로 사람이라고 하지 않는다.
+PERSON_NAME = re.compile(r'^[가-힣][가-힣*]{1,3}$')
+
+# 사람 이름 길이인데 사람이 아닌 말들. '자동이체'·'용돈정산'·'정산'이
+# 넉 자라서 사람으로 잡혀 800만원이 남에게 부친 돈이 될 뻔했다.
+MONEY_WORDS = ('이체', '정산', '입금', '출금', '송금', '환급', '환불', '충전', '결제',
+               '취소', '회수', '잔여', '잔액', '카드', '급여', '용돈', '대출', '상환',
+               '이자', '예금', '적금', '수수료', '요금', '비용', '통장', '계좌', '페이',
+               '보험', '세금', '월세', '관리')
+
+
 class Classifier:
     def __init__(self, rules: dict | None = None, user_rules: dict | None = None,
                  user_rules_path: Path | None = None):
@@ -65,13 +78,18 @@ class Classifier:
         #      방향 판정보다 먼저 해야 한다. 안 그러면 배우자가 보낸 돈이
         #      '정기적으로 들어오는 큰 수입'으로 보여 급여로 승격된다
         #      (실제로 1,260만원이 소득으로 부풀려져 있었다).
+        #      다만 이름만 보고 판단하면 안 되는 자리가 있다. 통신비·전기요금은
+        #      명의자 이름을 달고 나간다. 실제 파일의 'SKT 이호현', '한전(이호현',
+        #      'SKT 윤영운' 15만원이 그래서 이체로 빠져 있었다. 청구서 이름이
+        #      보이면 이건 이체가 아니라 요금이니 아래 키워드 규칙으로 넘긴다.
         family = self.rules.get('family_names', {})
-        for name in family.get('spouse', []):
-            if name and name in content:
-                return '부부간이체', f'family:{name}'
-        for name in family.get('self', []):
-            if name and name in content:
-                return '내계좌이체', f'family:{name}'
+        if not self._is_bill(content):
+            for name in family.get('spouse', []):
+                if name and name in content:
+                    return '부부간이체', f'family:{name}'
+            for name in family.get('self', []):
+                if name and name in content:
+                    return '내계좌이체', f'family:{name}'
 
         # 1-4. 대출 실행금 — 들어온 돈이지만 소득이 아니다
         for kw in self.rules.get('loan_keywords', []):
@@ -104,13 +122,70 @@ class Classifier:
         # 6. 뱅샐 대/소분류 — 긴 매치(대+소)부터 본다
         banksalad = self.rules.get('banksalad_rules', [])
         for rule in sorted(banksalad, key=lambda r: -len(r['match'])):
-            if self._matches(tx, rule['match']):
-                return rule['category'], 'banksalad:' + '/'.join(rule['match'])
+            if not self._matches(tx, rule['match']):
+                continue
+            # 뱅샐 분류를 그대로 믿으면 안 되는 자리가 하나 있다. 실제 파일에서
+            # '보관이사비', '관리비', '산후조리원' 세 건이 뱅샐 쪽에
+            # '금융/이자/대출'로 들어와 대출이자로 잡혀 있었다. 대출이자는
+            # 고정비라 진단·처방에 그대로 얹히는데, 셋 다 대출과 무관하다.
+            # 이름에 금융기관이나 이자라는 말이 없으면 대출이자로 안 본다.
+            if rule['category'] == '대출이자':
+                words = self.rules.get('loan_interest_keywords', [])
+                if not any(w in content for w in words):
+                    return '미분류', 'banksalad:이자인데-이름이-금융기관이-아님'
+            if rule['category'] == '내계좌이체':
+                return self._own_or_person(content,
+                                           'banksalad:' + '/'.join(rule['match']))
+            return rule['category'], 'banksalad:' + '/'.join(rule['match'])
 
         # 7. 남은 것
         if tx.bs_type == '이체':
-            return '내계좌이체', 'fallback:transfer'
+            return self._own_or_person(content, 'fallback:transfer')
         return '미분류', 'fallback'
+
+    def _own_or_person(self, content: str, why: str) -> tuple[str, str]:
+        """'내계좌이체'라고 부르기 직전에, 정말 내 계좌인지 한 번 본다.
+
+        뱅샐은 '지출/금융/은행'과 '이체/이체' 두 칸에 은행 통로로 나간 돈을
+        전부 몰아넣는다. 여기에는 내 계좌 사이를 옮긴 것도 있지만 남에게 부친
+        돈도 섞여 있다. 그대로 두면 '안 쓴 돈'이 되어 저축률이 부풀려진다.
+        실제 파일에서 그렇게 594만원이 사라져 있었다.
+        """
+        kind, tag = self._person_transfer(content)
+        return (kind, tag) if kind else ('내계좌이체', why)
+
+    def _is_bill(self, content: str) -> bool:
+        """청구서 이름인가 — 통신사·한전처럼 명의자 이름을 달고 나가는 것."""
+        return any(kw in content for kw in self.rules.get('bill_keywords', []))
+
+    def _person_transfer(self, content: str) -> tuple[str, str]:
+        """받는 사람 이름으로만 남은 출금을 가른다. 못 가르면 빈 값을 준다."""
+        name = ' '.join(content.split())
+
+        # 카카오페이는 사업자 이름을 '박소영(소마나스**' 처럼 별 두 개로 가린다.
+        # 사람한테 부친 게 아니라 가게에서 산 것인데 무슨 가게인지가 안 남는다.
+        # 이체로 묻어 두면 영영 안 보이니 미분류로 올려 눈에 걸리게 한다.
+        if '**' in name:
+            return '미분류', 'pay:가게이름-가려짐'
+
+        # 받는 사람이 아예 안 남은 송금. 24건 280만원이 이렇게 있었다.
+        if name in ('송금 내역', '송금내역'):
+            return '개인송금', 'pay:받는사람-없음'
+        if name in ('송금 취소 내역', '송금취소 내역'):
+            return '환불·취소', 'pay:송금취소'
+
+        # 은행·페이 이름이 앞에 붙는 경우가 있다 ('토스최은유').
+        for pre in self.rules.get('bank_prefixes', []):
+            if name.startswith(pre) and len(name) > len(pre):
+                name = name[len(pre):].strip()
+                break
+
+        if not PERSON_NAME.match(name) or any(w in name for w in MONEY_WORDS):
+            return '', ''
+        family = self.rules.get('family_names', {})
+        if any(name == n for group in family.values() for n in group):
+            return '', ''
+        return '개인송금', 'person:' + name
 
     def _patterns(self):
         """정규식은 한 번만 컴파일해서 재사용한다 (거래 수천 건 × 규칙 수)."""
