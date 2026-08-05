@@ -327,17 +327,6 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
     </div>
 
     <div class="card">
-      <h2>용돈</h2>
-      <p class="sub">따로 쓰는 내 돈입니다. 어느 결제수단이 용돈인지 골라 두면
-        그 수단으로 나간 것만 따로 셉니다.</p>
-      <div class="chiprow" id="pocketPick"></div>
-      <div class="fig num" id="pocketFig" style="font-size:30px"></div>
-      <p class="note" id="pocketNote"></p>
-      <div class="bars" id="pocketBars" style="margin-top:12px"></div>
-      <div id="pocketGap"></div>
-    </div>
-
-    <div class="card">
       <h2>무엇으로 결제했나</h2>
       <p class="sub">간편결제는 가맹점 이름이 <b>「네이버페이」처럼 뭉뚱그려 찍히는 일</b>이 많아
         무엇을 샀는지 안 남습니다. 눌러서 확인하세요.</p>
@@ -729,11 +718,11 @@ const INCOME = '수입', FIXED = '고정비', VARIABLE = '변동비', SAVING = '
    저장이 막힌 브라우저도 있어서 실패를 삼키고 계속 돌아가게 한다.
    ═══════════════════════════════════════════════════════════ */
 const KEY = 'budget.v3';
-let mine = { cat:{}, once:{}, tax:{}, name:{}, pocket:{}, add:[] }, canStore = true;
+let mine = { cat:{}, once:{}, tax:{}, name:{}, add:[] }, canStore = true;
 try {
   const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
   mine = { cat:raw.cat || {}, once:raw.once || {}, tax:raw.tax || {},
-           name:raw.name || {}, pocket:raw.pocket || {}, add:raw.add || [] };
+           name:raw.name || {}, add:raw.add || [] };
 } catch (e) { canStore = false; }
 const persist = () => { if (!canStore) return;
   try { localStorage.setItem(KEY, JSON.stringify(mine)); } catch (e) { canStore = false; } };
@@ -1316,79 +1305,10 @@ function renderMonth() {
   drawBars(document.getElementById('expBars'), t.exp_cat, 'var(--spend)', intoCat);
   drawBars(document.getElementById('incBars'), t.inc_cat, 'var(--income)', intoCat);
   drawBars(document.getElementById('savBars'), t.sav_cat, 'var(--save)', intoCat);
-  renderPocket(m);
   drawPay(m);
   drawReconcile();
   drawTrend();
   drawExcluded();
-}
-
-/* ═══════════════════════════════════════════════════════════
-   용돈
-
-   부부가 같이 쓰는 돈과 각자 알아서 쓰는 돈은 성격이 다르다. 섞어 놓으면
-   '이번 달 왜 이렇게 썼지'가 안 풀린다. 어느 결제수단이 용돈인지 한 번
-   골라 두면 그 수단으로 나간 것만 따로 센다.
-
-   문제가 하나 더 있다. 연동 안 된 카드는 카드값 나간 것만 보이고 무엇을
-   샀는지는 파일에 한 줄도 없다. 그 카드로 쓴 돈은 가계부 어디에도 안
-   잡힌다. 그래서 '얼마가 안 보이는지'를 숫자로 알려준다.
-   ═══════════════════════════════════════════════════════════ */
-const isPocket = r => !!(mine.pocket || {})[r.m || ''];
-
-function pocketMethods() {
-  const bag = {};
-  for (const r of ROWS) { const m = r.m || '(없음)';
-    bag[m] = (bag[m] || 0) + (counted(r) ? r.a : 0); }
-  return Object.keys(bag).sort((a,b) => bag[b] - bag[a]);
-}
-
-function renderPocket(m) {
-  const box = document.getElementById('pocketPick');
-  box.innerHTML = '';
-  pocketMethods().slice(0, 10).forEach(name => {
-    const on = !!(mine.pocket || {})[name];
-    const b = el('button','chip', name);
-    b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    b.addEventListener('click', () => {
-      mine.pocket = mine.pocket || {};
-      if (on) delete mine.pocket[name]; else mine.pocket[name] = 1;
-      persist(); refresh();
-    });
-    box.appendChild(b);
-  });
-
-  const picked = Object.keys(mine.pocket || {});
-  const fig = document.getElementById('pocketFig');
-  const note = document.getElementById('pocketNote');
-  const bars = document.getElementById('pocketBars');
-  const gap = document.getElementById('pocketGap');
-
-  if (!picked.length) {
-    fig.textContent = '';
-    note.textContent = '위에서 용돈으로 쓰는 카드나 통장을 고르세요.';
-    bars.innerHTML = ''; gap.innerHTML = '';
-    return;
-  }
-
-  const here = ROWS.filter(r => isPocket(r) && monthOf(r) === m && counted(r)
-    && (natOf(r) === FIXED || natOf(r) === VARIABLE));
-  const sum = here.reduce((a,r) => a + r.a, 0);
-  const all = ROWS.filter(r => isPocket(r) && counted(r)
-    && (natOf(r) === FIXED || natOf(r) === VARIABLE));
-  const months = new Set(all.map(monthOf)).size || 1;
-
-  fig.innerHTML = wonf(sum);
-  fig.style.color = 'var(--spend)';
-  note.innerHTML = `${m.slice(0,4)}년 ${+m.slice(5)}월 · 전체 기간 평균 월 <b>${won(all.reduce((a,r)=>a+r.a,0)/months)}</b>`;
-
-  const byCat = {};
-  here.forEach(r => byCat[catOf(r)] = (byCat[catOf(r)] || 0) + r.a);
-  drawBars(bars, byCat, 'var(--spend)', k => openDetail({
-    title: `용돈 · ${k}`, scope: `${m.slice(0,4)}년 ${+m.slice(5)}월`,
-    rows: here.filter(r => catOf(r) === k) }));
-
-  gap.innerHTML = '';
 }
 
 /* ── 카드 대사(對査).
@@ -1525,7 +1445,6 @@ const FILTERS = [
   { id:'spike',   label:'큰 거래',  test: r => SPIKE_SET.has(r.u) },
   { id:'edited',  label:'내가 고친 것', test: r => !!mine.cat[r.u] },
   { id:'once',    label:'일회성',   test: r => isOnce(r) },
-  { id:'pocket',  label:'용돈',     test: r => isPocket(r) },
   { id:'added',   label:'직접 넣은 것', test: r => !!r.added },
   { id:'spend',   label:'쓴 돈',    test: r => { const n = natOf(r); return n === FIXED || n === VARIABLE; } },
   { id:'save',    label:'저축·투자', test: r => natOf(r) === SAVING },
@@ -2390,7 +2309,7 @@ document.getElementById('moreGroups').addEventListener('click', () => {
 });
 document.getElementById('resetEdits').addEventListener('click', () => {
   mine.cat = {}; mine.once = {}; mine.name = {};
-  mine.pocket = {}; mine.add = []; persist(); refresh();
+  mine.add = []; persist(); refresh();
 });
 
 /* ═══════════════════════════════════════════════════════════
@@ -2673,7 +2592,7 @@ document.getElementById('impFile').addEventListener('change', e => {
     try {
       const got = JSON.parse(rd.result);
       let n = 0;
-      ['cat','once','name','pocket'].forEach(k => {
+      ['cat','once','name'].forEach(k => {
         if (got[k]) { Object.assign(mine[k], got[k]); n += Object.keys(got[k]).length; }
       });
       if (got.tax) Object.assign(mine.tax, got.tax);
@@ -2724,10 +2643,6 @@ document.getElementById('foot').innerHTML =
    페이 충전·대출 실행금을 걸러낸 숫자입니다. ${esc(D.owner)} 기준.
    고친 분류와 넣은 숫자는 이 폰에만 저장되고 어디로도 보내지 않습니다.`;
 
-/* 뱅샐이 '용돈'이라는 통장을 따로 두고 있으면 그게 용돈이 맞다. 처음 한 번만 켜 준다. */
-if (!mine.pocket || !Object.keys(mine.pocket).length) {
-  if (D.rows.some(r => r.m === '용돈')) { mine.pocket = { '용돈': 1 }; persist(); }
-}
 recompute();
 idx = MONTHS.length - 1;
 goalRate = Math.min(70, Math.max(10, Math.round(((BASE ? BASE.rate*100 : 30) + 10) / 5) * 5));

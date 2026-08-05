@@ -90,6 +90,13 @@ class Classifier:
             for name in family.get('self', []):
                 if name and name in content:
                     return '내계좌이체', f'family:{name}'
+            # 가족(부모·형제 등)에게 보낸 돈 — 내 계좌 사이를 옮긴 게 아니라
+            # 실제로 집 밖으로 나가는 돈이라 지출로 센다. 수입 방향(이 사람들이
+            # 보낸 돈)까지 여기서 지출로 잡으면 안 되므로 방향을 가린다.
+            if tx.bs_type != '수입':
+                for name in family.get('family', []):
+                    if name and name in content:
+                        return '가족·용돈', f'family:{name}'
 
         # 1-4. 대출 실행금 — 들어온 돈이지만 소득이 아니다
         for kw in self.rules.get('loan_keywords', []):
