@@ -342,6 +342,8 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
         무엇을 샀는지 안 남습니다. 눌러서 확인하세요.</p>
       <div class="bars" id="payBars"></div>
       <div id="payNote"></div>
+      <details><summary>카드값과 맞아떨어지나 확인하기</summary>
+        <div class="bars" id="recon" style="margin-top:8px"></div></details>
     </div>
 
     <div class="card">
@@ -1292,6 +1294,7 @@ function renderMonth() {
   drawBars(document.getElementById('savBars'), t.sav_cat, 'var(--save)', intoCat);
   renderPocket(m);
   drawPay(m);
+  drawReconcile();
   drawTrend();
   drawExcluded();
 }
@@ -1361,16 +1364,53 @@ function renderPocket(m) {
     title: `용돈 · ${k}`, scope: `${m.slice(0,4)}년 ${+m.slice(5)}월`,
     rows: here.filter(r => catOf(r) === k) }));
 
-  /* 연동 안 된 카드 — 카드값은 나갔는데 산 내역이 없는 경우 */
-  const paid = ROWS.filter(r => catOf(r) === '카드대금' && isPocket(r));
-  const paidSum = paid.reduce((a,r) => a + r.a, 0);
-  const nameHint = paid.length ? paid[0].c : '';
-  gap.innerHTML = paidSum > 0
-    ? `<div class="how" style="margin-top:14px">이 수단에서 <b>카드값으로 ${won(paidSum)}</b>이 나갔습니다.
-       그 카드가 뱅샐에 연동돼 있지 않으면 <b>무엇을 샀는지는 파일에 없습니다</b> —
-       금액만큼 소비가 통째로 빠져 있다는 뜻입니다.
-       카드사 앱에서 이용내역을 복사해 「내역」 탭의 <b>붙여넣기 → 거래 추가</b>로 넣으면
-       그때부터 제대로 잡힙니다.${nameHint ? ` (${esc(nameHint)})` : ''}</div>` : '';
+  gap.innerHTML = '';
+}
+
+/* ── 카드 대사(對査).
+   카드값으로 낸 돈과 카드로 산 물건값이 얼추 맞아야 한다. 카드값만 크면
+   그 카드의 결제 건이 파일에 안 들어온 것이고, 그만큼 소비가 통째로
+   빠져 있다는 뜻이다.
+
+   추측으로 말하면 안 된다. 실제로 이 파일에서 '신한카드'라는 이름의
+   결제수단이 없길래 연동이 안 됐다고 했는데, 알고 보니 카드 상품명
+   ('배민 밥친구', 'BC 바로 K-패스')으로 들어와 있었다. 그래서 이제는
+   단정하지 않고 두 숫자를 나란히 놓고 보게 한다. */
+function reconcile() {
+  const accounts = new Set((D.asset_lines || []).map(a => a.name));
+  let bought = 0, paid = 0;
+  for (const r of ROWS) {
+    const k = catOf(r), n = natOf(r);
+    if ((n === FIXED || n === VARIABLE) && !accounts.has(r.m || '')) bought += r.a;
+    if ((k === '카드대금' || k === '페이충전') && r.t !== '수입') paid += r.a;
+  }
+  return { bought, paid, gap: paid - bought };
+}
+
+function drawReconcile() {
+  const node = document.getElementById('recon');
+  if (!node) return;
+  const c = reconcile();
+  const off = c.bought ? Math.abs(c.gap) / c.bought : 1;
+  const ok = off <= 0.15;
+  node.innerHTML =
+    `<div class="bar-row"><div class="nm">카드·페이로 산 것</div>
+       <div><div class="bar" style="width:${Math.min(c.bought/Math.max(c.bought,c.paid)*100,100)}%;background:var(--spend)"></div></div>
+       <div class="vl num">${man(c.bought)}</div></div>
+     <div class="bar-row"><div class="nm">카드값·충전으로 낸 것</div>
+       <div><div class="bar" style="width:${Math.min(c.paid/Math.max(c.bought,c.paid)*100,100)}%;background:var(--navy)"></div></div>
+       <div class="vl num">${man(c.paid)}</div></div>
+     <div class="how" style="margin-top:12px">` + (ok
+      ? `두 숫자가 <b>${(off*100).toFixed(0)}%</b> 안쪽으로 맞습니다.
+         카드 결제 건이 빠짐없이 들어와 있다는 뜻이라, 카드값을 지출에서 뺀 것이 맞습니다.`
+      : c.gap > 0
+        ? `카드값으로 낸 돈이 산 것보다 <b>${won(c.gap)}</b> 많습니다.
+           결제 건이 안 들어온 카드가 있을 수 있습니다 — 그러면 그만큼 소비가 빠져 있습니다.
+           카드사 앱에서 이용내역을 복사해 「내역」 탭의 <b>붙여넣기 → 거래 추가</b>로 넣으세요.`
+        : `산 것이 카드값보다 <b>${won(-c.gap)}</b> 많습니다.
+           아직 안 낸 카드값이 있거나 할부가 남아 있으면 이렇게 나옵니다.`)
+    + `<br><span style="color:var(--muted)">통장에서 바로 나간 것은 뺀 숫자입니다.
+       결제일이 달을 넘기므로 딱 맞지는 않습니다.</span></div>`;
 }
 
 /* 무엇으로 결제했나.

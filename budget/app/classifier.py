@@ -266,6 +266,48 @@ def _digits(content: str) -> str:
     return only if len(only) >= 10 else ''
 
 
+REVERSAL_DAYS = 5
+REVERSAL_MIN = 10_000       # 작은 금액은 우연히 같을 수 있다
+
+
+def detect_payment_reversals(transactions) -> list[dict]:
+    """카드값이 나갔다 그대로 되돌아온 짝을 찾는다.
+
+    카드사에서 결제가 취소됐다 재승인되면 같은 금액이 하루 뒤에 그대로
+    입금된다. 이걸 '환불'로 보면 물건값을 돌려받은 것처럼 읽혀서,
+    "그만큼 쓴 돈이 실제보다 높게 잡혀 있다"는 잘못된 안내가 나간다.
+    실제로는 짝이 맞아 서로 지워지는 돈이다.
+
+    금액이 같고 며칠 안쪽인 짝만 본다. 한 번 짝지은 거래는 다시 안 쓴다.
+    """
+    outs = [t for t in transactions
+            if t.category == '카드대금' and t.bs_type in ('지출', '이체')
+            and t.amount >= REVERSAL_MIN]
+    ins = [t for t in transactions
+           if t.category == '환불·취소' and t.bs_type == '수입'
+           and t.amount >= REVERSAL_MIN]
+
+    used, pairs = set(), []
+    for inc in sorted(ins, key=lambda t: -t.amount):
+        for out in outs:
+            if id(out) in used or out.amount != inc.amount:
+                continue
+            if abs((out.date - inc.date).days) > REVERSAL_DAYS:
+                continue
+            used.add(id(out))
+            for tx in (out, inc):
+                tx.category = '결제취소'
+                tx.nature = cat.EXCLUDED
+                tx.rule = 'reversal'
+            pairs.append({
+                'amount': inc.amount, 'paid': out.date.isoformat(),
+                'back': inc.date.isoformat(), 'content': inc.content,
+            })
+            break
+    pairs.sort(key=lambda r: -r['amount'])
+    return pairs
+
+
 TRANSFER_MIN_AMOUNT = 500_000
 TRANSFER_MIN_COUNT = 3
 

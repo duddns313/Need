@@ -43,6 +43,8 @@ def load(paths_and_owners) -> tuple[list, dict]:
     # 승격된 것까지 다시 걸러진다.
     all_loans = [ln for pf in files for ln in pf.loans]
     classifier.detect_loan_disbursements(txs, all_loans)
+    # 카드값이 나갔다 그대로 돌아온 짝은 환불이 아니다. 서로 지운다.
+    classifier.detect_payment_reversals(txs)
 
     owners = [pf.owner for pf in files]
     if len(owners) > 1:
