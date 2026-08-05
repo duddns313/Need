@@ -62,6 +62,21 @@ def load(paths_and_owners) -> tuple[list, dict]:
             for pf in files for a in pf.loans
         ],
     }
+    # 자산을 묶음째로 넘긴다. 순자산 총액만으로는 '당장 쓸 수 있는 돈'을
+    # 알 수 없다. 4,900만원을 갖고 있어도 그게 전부 묶여 있으면 냉장고가
+    # 고장났을 때 카드를 또 긁는 수밖에 없다.
+    # 뱅샐 시트는 묶음 이름을 그 묶음의 첫 줄에만 적어 둔다. 나머지 줄은
+    # 빈칸이라, 그대로 읽으면 묶음마다 한 줄씩만 남는다. 앞줄 이름을 물려준다.
+    lines, group = [], ''
+    for pf in files:
+        group = ''
+        for a in pf.assets:
+            group = a.group or group
+            lines.append({'group': group, 'name': a.name, 'amount': a.amount})
+    wealth['asset_lines'] = lines
+    # 즉시 꺼내 쓸 수 있는 묶음. 청약·투자·연금은 비상금이 아니다.
+    wealth['liquid_groups'] = ['자유입출금 자산', '현금 자산', '전자금융 자산']
+
     # 퇴직연금(DC/DB)은 회사가 넣어준 돈이라 세액공제와 상관없다.
     # 그런데 '연금'이라는 이름 때문에 본인 납입분과 섞이기 쉬워서 따로 뽑아 둔다.
     wealth['pension_assets'] = [

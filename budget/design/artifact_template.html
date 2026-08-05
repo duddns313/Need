@@ -480,11 +480,60 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
       <div id="leaks"></div>
     </div>
 
+  </section>
+
+  <!-- ─────────────────────────────── 자산 -->
+  <section role="tabpanel" id="p-asset" aria-labelledby="t-asset" hidden>
+    <h1>돈의 순서</h1>
+    <p class="lede">아끼는 것보다 <b>순서</b>가 먼저입니다.</p>
+
+    <div class="card">
+      <h2>지금 어디쯤인가</h2>
+      <p class="sub">재무설계에서 흔히 쓰는 순서입니다. 앞 단계를 건너뛰고 뒤로 가면
+        사고 한 번에 앞으로 돌아옵니다.</p>
+      <div id="ladder"></div>
+    </div>
+
+    <div class="card">
+      <h2>비상금</h2>
+      <p class="sub">갑자기 돈 쓸 일이 생겼을 때 <b>빚내지 않고 넘길 수 있는</b> 돈입니다.
+        투자한 돈이나 연금은 여기 안 들어갑니다 — 급할 때 손해 보고 팔거나 아예 못 뺍니다.</p>
+      <div class="fig num" id="efFig"></div>
+      <p class="note" id="efNote"></p>
+      <div class="split" id="efBar" style="margin-top:14px"></div>
+      <div class="legend" id="efLegend"></div>
+      <div id="efPlan"></div>
+      <details><summary>당장 쓸 수 있는 돈이 어디에 있나</summary>
+        <table><tbody id="efRows"></tbody></table></details>
+    </div>
+
+    <div class="card">
+      <h2>빚 갚는 순서</h2>
+      <p class="sub">금리를 넣으면 <b>어느 빚부터</b> 갚아야 이자를 덜 내는지,
+        연금저축에 넣는 것과 어느 쪽이 이득인지 계산합니다.</p>
+      <div id="loanInputs"></div>
+      <div class="field" style="margin-top:4px">
+        <label for="inExtra">매달 더 낼 수 있는 돈</label>
+        <div class="hint">최소 상환액 말고 <b>추가로</b> 넣을 수 있는 금액입니다.</div>
+        <div class="unit"><input type="text" id="inExtra" inputmode="numeric" placeholder="0"><span>원</span></div>
+      </div>
+      <div id="loanPlan"></div>
+    </div>
+
+    <div class="card">
+      <h2>매달 남는 돈, 어디로 보낼까</h2>
+      <p class="sub">남는 돈을 배정하지 않으면 통장에 있다가 그냥 없어집니다.
+        지금 상황에서 순서대로 나누면 이렇습니다.</p>
+      <div id="allocate"></div>
+    </div>
+
     <div class="card">
       <h2>순자산</h2>
       <div class="fig num" id="net" style="font-size:28px"></div>
       <div class="bars" id="wealth" style="margin-top:10px"></div>
       <div class="legend" style="margin-top:14px" id="invest"></div>
+      <details><summary>무엇을 갖고 있나</summary>
+        <table><tbody id="assetRows"></tbody></table></details>
     </div>
   </section>
 
@@ -591,6 +640,7 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
   <button role="tab" id="t-spend" aria-controls="p-spend" aria-selected="false">소비</button>
   <button role="tab" id="t-list"  aria-controls="p-list"  aria-selected="false">내역</button>
   <button role="tab" id="t-goal"  aria-controls="p-goal"  aria-selected="false">목표</button>
+  <button role="tab" id="t-asset" aria-controls="p-asset" aria-selected="false">자산</button>
   <button role="tab" id="t-tax"   aria-controls="p-tax"   aria-selected="false">절세</button>
 </div>
 
@@ -617,6 +667,22 @@ const median = xs => { if (!xs.length) return 0;
   const s = [...xs].sort((a,b) => a-b), m = s.length >> 1;
   return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2; };
 const VERDICT = { good:'좋음', watch:'주의', act:'손봐야' };
+
+/* 조사. '신용대출가 15%를 넘습니다'처럼 쓰면 한국말이 아니다.
+   마지막 글자에 받침이 있으면 이/은/을, 없으면 가/는/를. */
+function josa(word, withFinal, withoutFinal) {
+  const c = String(word || '').trim().slice(-1).charCodeAt(0);
+  const hangul = c >= 0xac00 && c <= 0xd7a3;
+  // 숫자·영문은 읽는 소리로 정한다. 1(일)은 받침이 있고 2(이)는 없다.
+  const last = String(word).trim().slice(-1);
+  const DIGIT = { '0':1, '1':1, '3':1, '6':1, '7':1, '8':1 };   // 영·일·삼·육·칠·팔
+  const LATIN = /[lmnrLMNR]/;                                   // 엘·엠·엔·알
+  const hasFinal = hangul ? (c - 0xac00) % 28 !== 0
+    : /[0-9]/.test(last) ? !!DIGIT[last]
+    : /[a-zA-Z]/.test(last) ? LATIN.test(last) : false;
+  return word + (hasFinal ? withFinal : withoutFinal);
+}
+const iga = w => josa(w, '이', '가');
 const INCOME = '수입', FIXED = '고정비', VARIABLE = '변동비', SAVING = '저축투자', EXCLUDED = '제외';
 
 /* ═══════════════════════════════════════════════════════════
@@ -754,6 +820,17 @@ function health() {
     verdict: verdictOf(BASE.rate, SAVING_GOOD, SAVING_WATCH, true),
     note:`보통 달에 ${won(BASE.income)} 벌어 ${won(BASE.spend)} 씁니다.`,
     target:'30% 이상이면 좋습니다.' });
+
+  /* 비상금은 저축률보다 먼저 봐야 하는 숫자다. 저축률이 아무리 높아도
+     당장 쓸 수 있는 돈이 없으면 사고 한 번에 다시 카드빚으로 돌아간다. */
+  const Lq = liquid();
+  if (BASE.spend) {
+    const mo = Lq.total / BASE.spend;
+    out.push({ key:'emergency', label:'비상금', display: mo.toFixed(1) + '개월치',
+      verdict: verdictOf(mo, EF_MONTHS, 1, true),
+      note:`급할 때 바로 쓸 수 있는 돈이 ${won(Lq.total)}입니다. 투자·연금은 뺀 금액입니다.`,
+      target:`평소 지출 ${EF_MONTHS}개월치(${won(BASE.spend*EF_MONTHS)})는 있어야 합니다.` });
+  }
 
   const fr = BASE.income ? BASE.fixed / BASE.income : 0;
   out.push({ key:'fixed', label:'고정비 비중', display:(fr*100).toFixed(0)+'%',
@@ -1116,6 +1193,7 @@ function renderHome() {
   const worry = HEALTH.filter(h => h.verdict !== 'good');
   if (!worry.length) { todo.appendChild(el('p','note','진단에서 걸린 것이 없습니다. 지금 흐름을 유지하세요.')); return; }
   const TIP = {
+    emergency: '「자산」 탭을 보세요. 아끼는 것보다 <b>순서</b>가 먼저입니다 — 비상금 없이 투자부터 하면 사고 한 번에 원점입니다.',
     saving: '「목표」 탭에서 저축률을 정하고 줄일 곳을 확인하세요. 「절세」 탭도 함께 보세요 — 안 내도 되는 세금이 저축보다 클 수 있습니다.',
     fixed: '「목표」 탭의 <b>매달 새는 돈</b>부터 보세요. 한 번 끊으면 매달 효과가 납니다.',
     eatout: '장보기 비중을 늘리면 같은 끼니를 덜 쓰고 먹습니다. 「목표」 탭에 배달·외식을 어떻게 줄이는지 적어 뒀습니다.',
@@ -1492,6 +1570,288 @@ function renderGoal() {
   if (!LEAKS.length) lk.appendChild(el('p','note','매달 반복되는 결제가 없습니다.'));
 }
 
+/* ═══════════════════════════════════════════════════════════
+   돈의 순서
+
+   가계부 앱은 대개 '얼마 썼나'에서 멈춘다. 재무설계에서 먼저 보는 건
+   순서다. 비상금 없이 투자부터 하면, 냉장고가 고장난 날 손해 보고 팔거나
+   카드를 또 긁는다. 그러면 지금까지 아낀 게 한 번에 없어진다.
+
+   그래서 흔히 쓰는 순서를 놓고 지금 어디쯤인지 표시한다.
+   ═══════════════════════════════════════════════════════════ */
+const EF_MIN = 1_000_000;    // 최소 비상금 — 갑작스러운 일에 카드 안 긁을 정도
+const EF_MONTHS = 3;         // 목표 비상금 — 몇 달치 생활비
+const HIGH_RATE = 15;        // 이 금리를 넘으면 무조건 먼저 갚는다
+
+function liquid() {
+  const groups = new Set(D.liquid_groups || []);
+  const rows = (D.asset_lines || []).filter(a => groups.has(a.group));
+  return { rows, total: rows.reduce((a,r) => a + r.amount, 0) };
+}
+
+/* 금리는 소수점이 있다. numIn 은 숫자만 남기므로 '2.5'를 25로 읽는다. */
+const numDec = s => { const n = parseFloat(String(s || '').replace(/[^0-9.]/g, '')); 
+  return Number.isFinite(n) ? n : 0; };
+const loanRate = i => { const v = numDec(mine.tax['rate' + i]); return v > 0 && v < 100 ? v : 0; };
+
+function ladder() {
+  const L = liquid(), base = BASE || { spend: 0 };
+  const target = base.spend * EF_MONTHS;
+  const loans = D.loans || [];
+  const rated = loans.filter((l,i) => loanRate(i) > 0);
+  const high = rated.filter((l,i) => loanRate(loans.indexOf(l)) >= HIGH_RATE);
+  const pension = taxVal('pension') + taxVal('irp');
+  const invest = (D.investments || []).reduce((a,i) => a + (i['평가금액']||0), 0);
+
+  return [
+    { n:1, label:`최소 비상금 ${won(EF_MIN)}`,
+      done: L.total >= EF_MIN,
+      note: L.total >= EF_MIN
+        ? `당장 쓸 수 있는 돈이 ${won(L.total)} 있습니다.`
+        : `지금 ${won(L.total)}뿐입니다. ${won(EF_MIN - L.total)}만 더 넣으면 첫 단계는 끝납니다. `
+          + '이게 없으면 작은 사고에도 카드를 긁게 됩니다.',
+      why: '갑자기 돈 쓸 일이 생겼을 때 빚내지 않고 넘기는 최소한입니다.' },
+
+    { n:2, label:`금리 ${HIGH_RATE}% 넘는 빚 없애기`,
+      done: rated.length > 0 && high.length === 0,
+      unknown: rated.length === 0 && loans.length > 0,
+      note: loans.length === 0 ? '빚이 없습니다.'
+        : rated.length === 0 ? '아래에 대출 금리를 넣으면 판단해 드립니다.'
+        : high.length ? `${iga(high.map(l => esc(l.name)).join(', '))} ${HIGH_RATE}%를 넘습니다. 이건 어떤 투자보다 먼저입니다.`
+        : `가진 빚이 전부 ${HIGH_RATE}% 아래입니다. 급하게 갚을 것은 없습니다.`,
+      why: '고금리 빚을 두고 투자하는 건 확정 손실을 안고 불확실한 수익을 노리는 것입니다.' },
+
+    { n:3, label:`비상금 ${EF_MONTHS}개월치 (${won(target)})`,
+      done: L.total >= target,
+      note: L.total >= target ? `${(L.total/(base.spend||1)).toFixed(1)}개월치를 갖고 계십니다.`
+        : `지금 ${(L.total/(base.spend||1)).toFixed(1)}개월치입니다. ${won(target - L.total)} 모자랍니다.`,
+      why: '실직·병원·이사처럼 몇 달이 걸리는 일에 대비하는 돈입니다.' },
+
+    { n:4, label:'세금 깎아주는 저축 채우기 (연 900만)',
+      done: pension >= PENSION_CAP,
+      note: pension >= PENSION_CAP ? '한도를 다 쓰셨습니다.'
+        : `올해 ${won(pension)} 넣으셨습니다. ${won(PENSION_CAP - pension)}이 비어 있고, `
+          + `채우면 ${won(Math.round((PENSION_CAP - pension) * (taxVal('salary') > RATE_LINE ? RATE_LOW : RATE_HIGH)))}을 돌려받습니다.`,
+      why: '넣는 순간 13~16%를 돌려받습니다. 이만큼 확실한 수익은 다른 데 없습니다.' },
+
+    { n:5, label:'그 밖의 투자 · 남은 빚 갚기',
+      done: invest > 0,
+      note: invest > 0 ? `일반 계좌에 ${won(invest)}을 굴리고 계십니다.` : '아직 없습니다.',
+      why: '앞의 네 단계가 끝난 뒤에 하는 것이 순서입니다.' },
+  ];
+}
+
+function renderAsset() {
+  const steps = ladder();
+  const box = document.getElementById('ladder');
+  box.innerHTML = '';
+  const at = steps.findIndex(s => !s.done && !s.unknown);
+  steps.forEach((s, i) => {
+    /* 앞 단계를 안 끝냈는데 뒤 단계를 하고 있으면 그게 이 표의 핵심이다.
+       초록 체크로 칠해 버리면 잘하고 있는 줄 안다. */
+    const skipped = s.done && at !== -1 && i > at;
+    const state = skipped ? 'watch' : s.unknown ? 'watch' : s.done ? 'good'
+                : (i === at ? 'act' : 'watch');
+    const word = skipped ? '앞질렀음' : s.unknown ? '확인 필요' : s.done ? '됨'
+                : (i === at ? '여기' : '아직');
+    box.appendChild(el('div','check',
+      `<span class="badge ${state}">${word}</span>
+       <div><div class="lab">${s.n}. ${s.label}</div>
+         <div class="note">${s.note}</div>
+         <div class="tgt">${skipped
+           ? `<b>${steps[at].n}번을 건너뛰고 여기부터 하고 계십니다.</b> 나쁜 건 아니지만,
+              앞 단계가 비어 있으면 사고 한 번에 여기 있는 돈을 손해 보고 팔게 됩니다.`
+           : s.why}</div></div><div></div>`));
+  });
+
+  /* ── 비상금 */
+  const L = liquid(), base = BASE || { spend: 0 };
+  const target = base.spend * EF_MONTHS;
+  const months = base.spend ? L.total / base.spend : 0;
+  const fig = document.getElementById('efFig');
+  fig.innerHTML = `${months.toFixed(1)}<span class="cur">개월치</span>`;
+  fig.style.color = months >= EF_MONTHS ? 'var(--save)' : months >= 1 ? 'var(--watch)' : 'var(--debt)';
+  document.getElementById('efNote').innerHTML =
+    `당장 쓸 수 있는 돈 <b>${won(L.total)}</b> · 평소 한 달 지출 <b>${won(base.spend)}</b><br>`
+    + (months >= EF_MONTHS ? '넉넉합니다.'
+       : `${EF_MONTHS}개월치 <b>${won(target)}</b>까지 <b>${won(Math.max(target - L.total,0))}</b> 모자랍니다.`);
+
+  const have = Math.min(L.total, target), short = Math.max(target - L.total, 0);
+  document.getElementById('efBar').innerHTML =
+    `<i style="flex:${Math.max(have,1)};background:var(--save)"></i>`
+    + (short ? `<i style="flex:${short};background:var(--surface-2)"></i>` : '');
+  document.getElementById('efLegend').innerHTML =
+    `<span><i style="background:var(--save)"></i>있는 돈 ${man(L.total)}</span>`
+    + (short ? `<span><i style="background:var(--surface-2)"></i>모자란 돈 ${man(short)}</span>` : '');
+
+  const spare = BASE ? BASE.left : 0;
+  document.getElementById('efPlan').innerHTML = short > 0 && spare > 0
+    ? `<div class="how" style="margin-top:14px">매달 남는 <b>${won(spare)}</b>을 전부 모으면
+       <b>${Math.ceil(short/spare)}달</b>이면 채웁니다. 절반씩만 떼도 ${Math.ceil(short/(spare/2))}달입니다.<br>
+       <b>쓰는 통장과 다른 통장</b>에 두세요. 같은 통장에 있으면 그냥 생활비가 됩니다.
+       파킹통장이나 CMA면 넣고 빼기 쉬우면서 이자도 붙습니다.</div>`
+    : short > 0 ? `<div class="how" style="margin-top:14px">지금은 매달 남는 돈이 없어서
+       비상금을 모을 여력이 없습니다. 「목표」 탭에서 줄일 곳을 먼저 보세요.</div>` : '';
+
+  const efRows = document.getElementById('efRows');
+  efRows.innerHTML = '';
+  L.rows.filter(r => r.amount !== 0).sort((a,b) => b.amount - a.amount).forEach(r =>
+    efRows.appendChild(el('tr',null,
+      `<td>${esc(r.name)}</td><td class="num">${won(r.amount)}</td>`)));
+
+  const aRows = document.getElementById('assetRows');
+  aRows.innerHTML = '';
+  (D.asset_lines || []).filter(r => r.amount !== 0).sort((a,b) => b.amount - a.amount)
+    .forEach(r => aRows.appendChild(el('tr',null,
+      `<td>${esc(r.name)}<br><span class="note">${esc(r.group || '')}</span></td>
+       <td class="num">${won(r.amount)}</td>`)));
+
+  renderLoans();
+  renderAllocate();
+}
+
+/* ── 빚 갚기.
+   원금 B, 연이율 r, 매달 P를 낼 때 몇 달 걸리는지.
+   P가 한 달 이자보다 적으면 영원히 안 끝난다 — 그 경우를 먼저 걸러낸다. */
+function monthsToPay(balance, ratePct, pay) {
+  const i = ratePct / 100 / 12;
+  if (pay <= 0) return Infinity;
+  if (i === 0) return balance / pay;
+  if (pay <= balance * i) return Infinity;
+  return -Math.log(1 - balance * i / pay) / Math.log(1 + i);
+}
+const totalInterest = (balance, ratePct, pay) => {
+  const m = monthsToPay(balance, ratePct, pay);
+  return m === Infinity ? Infinity : pay * m - balance;
+};
+
+function renderLoans() {
+  const loans = D.loans || [];
+  const box = document.getElementById('loanInputs');
+  if (!box.dataset.built) {
+    box.innerHTML = '';
+    loans.forEach((l, i) => {
+      const f = el('div','field',
+        `<label for="rate${i}">${esc(l.name)}</label>
+         <div class="hint">잔액 ${won(l['잔액'] || 0)} · 연이율을 넣으세요</div>
+         <div class="unit"><input type="text" id="rate${i}" inputmode="decimal" placeholder="예: 4.5"><span>%</span></div>`);
+      box.appendChild(f);
+      const inp = f.querySelector('input');
+      inp.value = mine.tax['rate' + i] || '';
+      inp.addEventListener('input', () => {
+        mine.tax['rate' + i] = inp.value.replace(/[^0-9.]/g, '');
+        persist(); renderAsset(); renderTax();
+      });
+    });
+    if (!loans.length) box.innerHTML = '<p class="note">대출이 없습니다.</p>';
+    box.dataset.built = '1';
+  }
+
+  const extra = taxVal('extra');
+  const rated = loans.map((l,i) => ({ ...l, rate: loanRate(i), balance: l['잔액'] || 0 }))
+                     .filter(l => l.rate > 0 && l.balance > 0);
+  const out = document.getElementById('loanPlan');
+
+  if (!rated.length) {
+    out.innerHTML = loans.length
+      ? '<p class="note">금리를 넣으면 어느 것부터 갚을지 계산합니다.</p>' : '';
+    return;
+  }
+
+  const byRate = [...rated].sort((a,b) => b.rate - a.rate);     // 눈사태
+  const bySize = [...rated].sort((a,b) => a.balance - b.balance); // 눈덩이
+  const rate = taxVal('salary') > RATE_LINE ? RATE_LOW : RATE_HIGH;
+  const top = byRate[0];
+
+  let html = `<div class="how" style="margin-top:6px">
+    이자를 가장 적게 내려면 <b>금리 높은 것부터</b>입니다 —
+    <b>${esc(top.name)} (${top.rate}%)</b>.`;
+  if (byRate[0].name !== bySize[0].name) {
+    html += ` 다만 <b>${esc(bySize[0].name)}</b>가 잔액이 작아
+      (${won(bySize[0].balance)}) 먼저 없애면 빚 하나가 사라지는 게 눈에 보입니다.
+      금리 차이가 작으면 이쪽이 더 오래 갑니다.`;
+  }
+  html += `<br><br>연금저축에 넣으면 <b>${(rate*100).toFixed(1)}%</b>를 돌려받습니다.
+    가장 높은 금리가 ${top.rate}%이니, `
+    + (top.rate > rate*100
+        ? `<b>빚을 먼저 갚는 쪽</b>이 이득입니다.`
+        : `<b>연금 한도를 먼저 채우는 쪽</b>이 이득입니다. 다만 연금은 만 55세까지 묶입니다.`)
+    + '</div>';
+
+  if (extra > 0) {
+    html += '<div class="bars" style="margin-top:14px">';
+    byRate.forEach(l => {
+      const m = monthsToPay(l.balance, l.rate, extra);
+      html += `<div class="namebar" style="cursor:default">
+        <div class="r1"><span class="n">${esc(l.name)} · ${l.rate}%</span>
+          <span class="v num">${won(l.balance)}</span></div>
+        <div class="sm">${m === Infinity
+          ? `매달 ${won(extra)}으로는 이자도 못 갚습니다`
+          : `이것만 매달 ${won(extra)}씩 갚으면 <b>${Math.ceil(m)}달</b> · 이자 ${won(totalInterest(l.balance,l.rate,extra))}`}</div>
+      </div>`;
+    });
+    html += '</div>';
+
+    const A = totalInterest(byRate[0].balance, byRate[0].rate, extra);
+    const B = totalInterest(bySize[0].balance, bySize[0].rate, extra);
+    if (byRate[0].name !== bySize[0].name && A !== Infinity && B !== Infinity) {
+      const diff = Math.abs(A - B);
+      html += `<p class="note" style="margin-top:10px">두 방법의 이자 차이는 대략
+        <b>${won(diff)}</b>입니다. ${diff < 300_000
+          ? '차이가 크지 않으니 <b>끝까지 할 수 있는 쪽</b>을 고르세요.'
+          : '차이가 제법 되니 금리 높은 것부터 가는 쪽을 권합니다.'}</p>`;
+    }
+  } else {
+    html += '<p class="note" style="margin-top:10px">매달 더 낼 수 있는 돈을 넣으면 언제 끝나는지 계산합니다.</p>';
+  }
+  out.innerHTML = html;
+}
+
+/* ── 남는 돈 배정.
+   YNAB 식으로 말하면 '모든 돈에 일을 준다'. 배정하지 않은 돈은
+   통장에 있다가 그냥 없어진다. 여기서는 위의 순서대로 자동으로 나눈다. */
+function renderAllocate() {
+  const box = document.getElementById('allocate');
+  const spare = BASE ? BASE.left : 0;
+  if (spare <= 0) {
+    box.innerHTML = '<p class="note">지금은 매달 남는 돈이 없습니다. 「목표」 탭에서 줄일 곳을 먼저 보세요.</p>';
+    return;
+  }
+  const L = liquid(), base = BASE, target = base.spend * EF_MONTHS;
+  const efShort = Math.max(target - L.total, 0);
+  const pensionShort = Math.max(PENSION_CAP - (taxVal('pension') + taxVal('irp')), 0) / 12;
+
+  const plan = [];
+  /* 쓸 돈을 먼저 떼어 둔다. 남는 걸 전부 묶어 버리는 계획은 한 달도 못 간다. */
+  const fun = Math.round(spare * 0.10);
+  let left = spare - fun;
+  const take = (label, want, note) => {
+    if (want <= 0 || left <= 0) return;
+    const got = Math.min(want, left);
+    left -= got;
+    plan.push({ label, amount: got, note });
+  };
+
+  const toEf = Math.min(efShort, left * 0.6);
+  take('비상금 통장', toEf,
+    efShort > 0 ? `${EF_MONTHS}개월치까지 ${won(efShort)} 남았습니다. 이 속도면 ${Math.ceil(efShort/toEf)}달 —
+      전부 몰아넣으면 ${Math.ceil(efShort/spare)}달이지만, 연금 한도는 <b>올해 안 넣으면 사라지므로</b>
+      같이 채우는 편이 낫습니다.` : '');
+  take('연금저축·IRP', pensionShort,
+    `연 900만원 한도를 12달로 나눈 금액입니다. 자동이체로 걸어 두면 신경 안 써도 됩니다.`);
+  take('남은 빚 더 갚기', left * 0.5, '위 「빚 갚는 순서」에서 정한 것부터.');
+  take('더 모을 돈', left, 'ISA나 일반 투자 계좌로.');
+  plan.push({ label:'그냥 쓰는 돈', amount: fun,
+    note:'전부 아끼는 계획은 한 달도 못 갑니다. 마음 편히 쓰라고 먼저 떼어 둔 돈입니다.' });
+
+  box.innerHTML = `<div class="fig num" style="font-size:26px;color:var(--save)">${wonf(spare)}</div>
+    <p class="note" style="margin:0 0 12px">보통 달에 남는 돈입니다.</p>`;
+  plan.forEach(p => box.appendChild(el('div','act-row',
+    `<div class="top"><span class="cat">${p.label}</span>
+       <span class="save">${won(p.amount)}</span></div>
+     ${p.note ? `<div class="why" style="margin-top:5px">${p.note}</div>` : ''}`)));
+}
+
 (function wealth() {
   document.getElementById('net').innerHTML = wonf(D.net);
   const mx = Math.max(D.assets, D.liabilities, 1);
@@ -1699,7 +2059,7 @@ function renderTax() {
 
 function wireTax() {
   [['inSalary','salary'], ['inPension','pension'], ['inIrp','irp'],
-   ['inChungyak','chungyak'], ['inMortgage','mortgage']]
+   ['inChungyak','chungyak'], ['inMortgage','mortgage'], ['inExtra','extra']]
     .forEach(([id, key]) => {
       const inp = document.getElementById(id);
       inp.value = mine.tax[key] ? numIn(mine.tax[key]).toLocaleString('ko-KR') : '';
@@ -1711,7 +2071,7 @@ function wireTax() {
         // 자릿점이 늘어난 만큼 커서를 밀어 준다
         if (at != null) { const d = inp.value.length - before;
           try { inp.setSelectionRange(at + d, at + d); } catch (e) {} }
-        persist(); renderTax();
+        persist(); renderTax(); renderAsset();
       });
     });
 
@@ -1735,7 +2095,7 @@ function wireTax() {
    ═══════════════════════════════════════════════════════════ */
 function refresh() {
   recompute();
-  renderHome(); renderMonth(); renderList(); renderGoal(); renderTax();
+  renderHome(); renderMonth(); renderList(); renderGoal(); renderAsset(); renderTax();
   const dot = (D.rows.filter(r => catOf(r) === '미분류').length || SPIKES.length) ? '<span class="dot"></span>' : '';
   document.getElementById('t-list').innerHTML = '내역' + dot;
 }

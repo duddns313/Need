@@ -34,6 +34,7 @@ MAX_CUT = 0.40           # 한 항목에서 요구할 수 있는 최대 절감�
 SAVING_GOOD, SAVING_WATCH = 0.30, 0.15      # 저축률
 FIXED_GOOD, FIXED_WATCH = 0.35, 0.50        # 수입 대비 고정비
 EATOUT_GOOD, EATOUT_WATCH = 0.50, 0.70      # 먹는 돈 중 사먹는 비중
+EMERGENCY_MONTHS = 3                        # 비상금 목표 — 평소 지출 몇 달치
 
 
 def _r(x) -> int:
@@ -86,8 +87,12 @@ def _verdict(value, good, watch, higher_is_better=True):
     return 'good' if value <= good else ('watch' if value <= watch else 'act')
 
 
-def health(transactions) -> list[dict]:
-    """지금 상태 진단. 각 항목은 판정과 근거를 함께 낸다."""
+def health(transactions, liquid=None) -> list[dict]:
+    """지금 상태 진단. 각 항목은 판정과 근거를 함께 낸다.
+
+    liquid 를 주면 비상금까지 본다 — 당장 꺼내 쓸 수 있는 돈의 합계다.
+    투자·연금은 넣으면 안 된다. 급할 때 손해 보고 팔거나 아예 못 뺀다.
+    """
     months = _months(transactions)
     if len(months) < MIN_MONTHS:
         return []
@@ -102,6 +107,20 @@ def health(transactions) -> list[dict]:
         'note': f"보통 달에 {base['수입']:,}원 벌어 {base['지출']:,}원 씁니다.",
         'target': f'{SAVING_GOOD*100:.0f}% 이상이면 좋습니다.',
     })
+
+    # 저축률보다 먼저 봐야 하는 숫자다. 저축률이 아무리 높아도 당장 쓸 돈이
+    # 없으면 사고 한 번에 다시 카드빚으로 돌아간다.
+    if liquid is not None and base['지출']:
+        cover = liquid / base['지출']
+        checks.append({
+            'key': 'emergency', 'label': '비상금',
+            'value': cover, 'display': f'{cover:.1f}개월치',
+            'verdict': _verdict(cover, EMERGENCY_MONTHS, 1),
+            'note': (f'급할 때 바로 쓸 수 있는 돈이 {round(liquid):,}원입니다. '
+                     f'투자·연금은 뺀 금액입니다.'),
+            'target': (f"평소 지출 {EMERGENCY_MONTHS}개월치"
+                       f"({base['지출']*EMERGENCY_MONTHS:,}원)는 있어야 합니다."),
+        })
 
     fixed_ratio = base['고정비'] / base['수입'] if base['수입'] else 0
     checks.append({
