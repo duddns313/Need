@@ -2294,7 +2294,58 @@ document.getElementById('resetEdits').addEventListener('click', () => {
 const DATE_RE = /(20\d{2})[.\-/년\s]+(\d{1,2})[.\-/월\s]+(\d{1,2})\s*일?/;
 const AMT_RE = /(-?[\d,]{3,})\s*원?/g;
 
+/* 머리글이 있는 표를 붙여넣은 경우 — 네이버페이 카드영수증, 카카오페이
+   거래내역서가 그렇다. 열 이름을 보고 자리를 잡는다.
+
+   이게 없으면 사고가 난다. 네이버페이 영수증 첫 칸은 승인번호(64761412)라
+   '가장 큰 숫자를 금액으로' 잡는 방식으로는 6천만원짜리 결제가 된다. */
+const HEAD = {
+  date: ['결제일자','거래일시','거래일자','이용일자','승인일자','일시','날짜'],
+  name: ['상품명','가맹점','가맹점명','내용','거래내용','적요','이용처'],
+  amount: ['합계','승인금액','거래금액','이용금액','결제금액','금액'],
+  cancel: ['취소금액'],
+};
+const splitCells = line => line.split(/\t|\s{2,}/).map(s => s.trim());
+
+function headerMap(cells) {
+  const got = {};
+  for (const [key, names] of Object.entries(HEAD)) {
+    const i = cells.findIndex(c => names.includes(c));
+    if (i >= 0) got[key] = i;
+  }
+  return (got.date != null && got.amount != null && got.name != null) ? got : null;
+}
+
+function parseTable(lines) {
+  let cols = null;
+  const out = [];
+  for (const line of lines) {
+    const cells = splitCells(line);
+    if (!cols) { cols = headerMap(cells); continue; }
+    const d = DATE_RE.exec(cells[cols.date] || '');
+    const amount = Math.abs(+String(cells[cols.amount] || '').replace(/[^0-9-]/g, ''));
+    const name = (cells[cols.name] || '').trim();
+    if (!d || !amount || !name) continue;
+    if (cols.cancel != null && +String(cells[cols.cancel] || '0').replace(/[^0-9]/g,'')) continue;
+    out.push({ date: `${d[1]}-${String(+d[2]).padStart(2,'0')}-${String(+d[3]).padStart(2,'0')}`,
+               amount, name: name.length > 40 ? name.slice(0,40) + '…' : name });
+  }
+  return out;
+}
+
 function parsePaste(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  // 머리글이 보이면 표로 읽는다. 훨씬 정확하다.
+  for (const line of lines.slice(0, 5)) {
+    if (headerMap(splitCells(line))) {
+      const rows = parseTable(lines.slice(lines.indexOf(line)));
+      if (rows.length) return rows;
+    }
+  }
+  return parseLoose(text);
+}
+
+function parseLoose(text) {
   const out = [];
   for (let line of text.split(/\r?\n/)) {
     line = line.replace(/\t/g, '  ').trim();
@@ -2305,12 +2356,20 @@ function parsePaste(text) {
 
     // 금액 후보 중 날짜 부분과 겹치지 않는 가장 큰 값
     const rest = line.slice(0, d.index) + ' ' + line.slice(d.index + d[0].length);
-    let best = 0, bestTxt = '';
+    /* 자릿점이 있는 숫자를 우선한다. 자릿점 없는 긴 숫자는 대개 승인번호나
+       카드번호지 금액이 아니다. */
+    let best = 0, bestTxt = '', comma = false;
     AMT_RE.lastIndex = 0;
     let m;
     while ((m = AMT_RE.exec(rest))) {
+      const hasComma = m[1].includes(',');
       const n = Math.abs(+m[1].replace(/,/g, ''));
-      if (n >= 100 && n > best) { best = n; bestTxt = m[0]; }
+      if (n < 100) continue;
+      if (!hasComma && String(n).length >= 7) continue;   // 승인번호로 본다
+      if (comma && !hasComma) continue;                    // 이미 나은 후보가 있다
+      if ((hasComma && !comma) || n > best) {
+        best = n; bestTxt = m[0]; comma = comma || hasComma;
+      }
     }
     if (!best) continue;
 

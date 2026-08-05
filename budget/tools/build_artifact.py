@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT.parent))
 
 from budget.app import (  # noqa: E402
-    categories as cat, classifier, couple, parser,
+    categories as cat, classifier, couple, parser, payexport,
 )
 
 TEMPLATE = ROOT / 'design' / 'artifact_template.html'
@@ -28,13 +28,26 @@ PLACEHOLDER = '__DATA__'
 FOOD = ['식료품', '외식', '배달', '카페·간식']
 
 
-def load(paths_and_owners) -> tuple[list, dict]:
-    """파일들을 읽어 분류까지 끝낸 거래와 자산을 돌려준다."""
+def load(paths_and_owners, pay_files=()) -> tuple[list, dict]:
+    """파일들을 읽어 분류까지 끝낸 거래와 자산을 돌려준다.
+
+    pay_files 를 주면 간편결제 영수증의 상품명을 먼저 붙인다. 분류보다
+    먼저 해야 한다 — '네이버페이'라는 이름으로는 어느 항목인지 알 수 없지만
+    '핑기 실리카겔 제습제'면 생활용품인 게 보인다.
+    """
     txs, files = [], []
     for path, owner in paths_and_owners:
         pf = parser.parse(path, owner)
         files.append(pf)
         txs.extend(pf.transactions)
+
+    for path in pay_files or ():
+        got = payexport.parse(path)
+        res = payexport.apply_names(txs, got.rows)
+        print(f"  간편결제 {Path(path).name}: {len(got.rows)}줄 읽어 "
+              f"{len(res['filled'])}건 이름 채움, {len(res['missed'])}건 짝 없음")
+        for r in res['missed'][:5]:
+            print(f"      짝 없음  {r.day}  {r.amount:>9,}  {r.name}")
 
     engine = classifier.Classifier()
     engine.classify_all(txs)
@@ -128,13 +141,15 @@ def main() -> int:
     ap.add_argument('--owners', nargs='*', default=None, help='사람 이름 (기본: 남편, 아내)')
     ap.add_argument('-o', '--out', default='budget_artifact.html')
     ap.add_argument('--json', default=None, help='데이터만 따로 저장할 경로')
+    ap.add_argument('--pay', nargs='*', default=[],
+                    help='네이버페이 카드영수증 · 카카오페이 거래내역서 엑셀')
     args = ap.parse_args()
 
     owners = args.owners or ['남편', '아내'][:len(args.files)]
     if len(owners) != len(args.files):
         ap.error('파일 수와 이름 수가 다릅니다.')
 
-    txs, wealth = load(list(zip(args.files, owners)))
+    txs, wealth = load(list(zip(args.files, owners)), pay_files=args.pay)
     data = build(txs, wealth, ' · '.join(owners))
 
     payload = json.dumps(data, ensure_ascii=False, separators=(',', ':'))
