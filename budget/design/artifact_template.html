@@ -393,6 +393,47 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
     </div>
 
     <div class="card">
+      <h2>페이 내역 붙여넣기</h2>
+      <p class="sub">간편결제는 가맹점이 <b>「네이버페이」</b>처럼만 찍혀서 무엇을 샀는지 안 남습니다.
+        결제앱에서 내역을 복사해 여기 붙여넣으면 <b>날짜와 금액으로 짝을 찾아</b> 진짜 가게 이름을 채웁니다.</p>
+      <details open>
+        <summary>어디서 가져오나요</summary>
+        <div class="how" style="margin-top:4px">
+          <b>카카오페이</b> — 앱 홈 맨 아래 <b>고객센터</b> → 카카오톡 상담 → <b>증명서 발급</b> →
+          거래내역서 발급. 기간과 파일 형태(엑셀·PDF)를 고르면 이메일로 옵니다.
+          엑셀을 열어 표를 긁어서 붙여넣으세요.<br><br>
+          <b>네이버페이</b> — PC 웹 <b>pay.naver.com</b> → 결제내역에서 기간을 정해 조회한 뒤
+          화면의 표를 그대로 긁어서 붙여넣으세요. (엑셀 내려받기 버튼이 보이면 그걸 써도 됩니다.)<br><br>
+          어떤 형태든 <b>날짜·금액·가게 이름</b>만 한 줄 안에 있으면 알아서 읽습니다.
+        </div>
+      </details>
+      <textarea id="paste" rows="5" placeholder="여기에 붙여넣기
+2026-07-31  99,950  쿠팡
+2026.07.20  400,000  무신사"
+        style="width:100%; margin-top:12px; border-radius:11px; border:1px solid var(--line);
+               background:var(--surface); color:var(--ink); font:inherit; font-size:16px;
+               padding:11px 13px; resize:vertical"></textarea>
+      <div class="rowacts" style="margin-top:10px">
+        <button class="chip" id="pasteGo">읽어서 채우기</button>
+        <button class="chip" id="pasteClear">지우기</button>
+      </div>
+      <div id="pasteResult"></div>
+    </div>
+
+    <div class="card">
+      <h2>내 설정 지키기</h2>
+      <p class="sub">고친 분류·일회성 표시·페이 이름·절세 입력은 <b>이 폰의 브라우저에만</b> 있습니다.
+        브라우저 기록을 지우거나 폰을 바꾸면 사라집니다.
+        새 파일로 화면을 다시 만들 때도 이 파일을 가져오면 그대로 이어집니다.</p>
+      <div class="rowacts">
+        <button class="chip" id="expSet">내보내기</button>
+        <button class="chip" id="impSet">가져오기</button>
+      </div>
+      <input type="file" id="impFile" accept=".json,application/json" hidden>
+      <p class="note" id="setNote" style="margin:10px 0 0"></p>
+    </div>
+
+    <div class="card">
       <h2>되돌리기</h2>
       <p class="sub" id="editCount"></p>
       <button class="chip" id="resetEdits" style="width:100%">내가 고친 것 전부 되돌리기</button>
@@ -584,16 +625,19 @@ const INCOME = '수입', FIXED = '고정비', VARIABLE = '변동비', SAVING = '
    저장이 막힌 브라우저도 있어서 실패를 삼키고 계속 돌아가게 한다.
    ═══════════════════════════════════════════════════════════ */
 const KEY = 'budget.v3';
-let mine = { cat:{}, once:{}, tax:{} }, canStore = true;
+let mine = { cat:{}, once:{}, tax:{}, name:{} }, canStore = true;
 try {
   const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
-  mine = { cat:raw.cat || {}, once:raw.once || {}, tax:raw.tax || {} };
+  mine = { cat:raw.cat || {}, once:raw.once || {},
+           tax:raw.tax || {}, name:raw.name || {} };
 } catch (e) { canStore = false; }
 const persist = () => { if (!canStore) return;
   try { localStorage.setItem(KEY, JSON.stringify(mine)); } catch (e) { canStore = false; } };
 
 /* 거래 하나의 '지금' 분류 — 내가 고쳤으면 그게 이긴다 */
 const catOf = r => mine.cat[r.u] || r.k;
+/* 페이 내역에서 찾아 채운 진짜 가게 이름이 있으면 그걸 쓴다 */
+const nameOf = r => (mine.name && mine.name[r.u]) || r.c;
 const natOf = r => D.cats[catOf(r)] || VARIABLE;
 const monthOf = r => r.d.slice(0, 7);
 const isOnce = r => !!mine.once[r.u];
@@ -790,7 +834,7 @@ function actions() {
 function topMerchants(category, ms, n) {
   const set = new Set(ms), bag = {};
   for (const r of D.rows) if (catOf(r) === category && set.has(monthOf(r)))
-    bag[r.c] = (bag[r.c] || 0) + r.a;
+    bag[nameOf(r)] = (bag[nameOf(r)] || 0) + r.a;
   return Object.entries(bag).sort((a,b) => b[1]-a[1]).slice(0, n)
     .map(([c,v]) => ({ content:c, per_month: Math.round(v / ms.length) }));
 }
@@ -800,7 +844,7 @@ function leaks() {
   for (const r of D.rows) {
     const k = catOf(r);
     if (k !== '구독료' && k !== '통신' && k !== '보험') continue;
-    const e = g[r.c] || (g[r.c] = { months:new Set(), amount:0, category:k });
+    const n = nameOf(r), e = g[n] || (g[n] = { months:new Set(), amount:0, category:k });
     e.months.add(monthOf(r)); e.amount += r.a;
   }
   return Object.entries(g).filter(([,e]) => e.months.size >= 3)
@@ -837,7 +881,7 @@ function spikes() {
 function groups() {
   const g = {};
   for (const r of D.rows) {
-    const e = g[r.c] || (g[r.c] = { content:r.c, count:0, amount:0, uids:[], cats:new Set() });
+    const n = nameOf(r), e = g[n] || (g[n] = { content:n, count:0, amount:0, uids:[], cats:new Set() });
     e.count++; e.amount += r.a; e.uids.push(r.u); e.cats.add(catOf(r));
   }
   return Object.values(g).map(e => ({ ...e, cat: e.cats.size === 1 ? [...e.cats][0] : null }))
@@ -962,7 +1006,7 @@ function drawDetail() {
   /* 한 단계 더 — 가게 이름끼리 묶어서 보여준다. 그 안으로 또 들어갈 수 있다. */
   if (v.byName !== false) {
     const bag = {};
-    rows.forEach(r => (bag[r.c] || (bag[r.c] = [])).push(r));
+    rows.forEach(r => { const n = nameOf(r); (bag[n] || (bag[n] = [])).push(r); });
     const names = Object.entries(bag).map(([c, rs]) =>
       [c, rs.reduce((a,r) => a + r.a, 0), rs]).sort((a,b) => b[1]-a[1]);
     if (names.length > 1) {
@@ -1016,7 +1060,7 @@ function drawDetail() {
     sortBy === 'amount' ? b.a - a.a : (a.d < b.d ? 1 : a.d > b.d ? -1 : 0));
   sorted.slice(0, txShown).forEach(r => {
     const tx = el('div','tx' + (natOf(r) === EXCLUDED ? ' dim' : ''),
-      `<div class="c">${esc(r.c)}</div>
+      `<div class="c">${esc(nameOf(r))}</div>
        <div class="a num">${won(r.a)}</div>
        <div class="meta">${r.d} · ${esc(r.m || '')} · ${esc(catOf(r))}${
          mine.cat[r.u] ? ' · 내가 고침' : ''}${isOnce(r) ? ' · 일회성' : ''}</div>`);
@@ -1223,6 +1267,7 @@ function drawExcluded() {
 
 /* ─────────────────────────────── 내역 */
 const FILTERS = [
+  { id:'all',     label:'전체',    test: () => true },
   { id:'unknown', label:'미분류',  test: r => catOf(r) === '미분류' },
   { id:'spike',   label:'큰 거래',  test: r => SPIKE_SET.has(r.u) },
   { id:'edited',  label:'내가 고친 것', test: r => !!mine.cat[r.u] },
@@ -1238,7 +1283,7 @@ let SPIKE_SET = new Set();
 function currentRows() {
   const f = FILTERS.find(x => x.id === filterId);
   const q = query.trim().toLowerCase();
-  return D.rows.filter(r => (!f || f.test(r)) && (!q || r.c.toLowerCase().includes(q)));
+  return D.rows.filter(r => (!f || f.test(r)) && (!q || nameOf(r).toLowerCase().includes(q) || r.c.toLowerCase().includes(q)));
 }
 
 function renderFilters() {
@@ -1290,16 +1335,16 @@ function renderList() {
     `${rows.length.toLocaleString('ko-KR')}건 · 금액 큰 순으로 보여줍니다.`;
 
   /* 같은 이름끼리 묶어 한 번에 고친다. 1,700건을 한 줄씩 고칠 사람은 없다. */
-  const seen = new Set(rows.map(r => r.c));
+  const seen = new Set(rows.map(nameOf));
   const gs = GROUPS.filter(g => seen.has(g.content));
   const box = document.getElementById('groups');
   box.innerHTML = '';
   if (!gs.length) { box.appendChild(el('p','note','해당하는 거래가 없습니다.')); }
   gs.slice(0, groupsShown).forEach(g => {
-    const rs = D.rows.filter(r => r.c === g.content);
+    const rs = D.rows.filter(r => nameOf(r) === g.content);
     const edited = rs.some(r => mine.cat[r.u]);
     const anyOnce = rs.some(r => isOnce(r));
-    const sp = SPIKES.filter(s => s.c === g.content)[0];
+    const sp = SPIKES.filter(s => nameOf(s) === g.content)[0];
     const item = el('div', 'item' + (anyOnce ? ' once' : '') + (edited ? ' edited' : ''),
       `<div class="top"><span class="nm2">${esc(g.content)}</span>
          <span class="amt num">${won(g.amount)}</span></div>
@@ -1707,13 +1752,171 @@ document.getElementById('goal').addEventListener('input', e => {
   goalRate = +e.currentTarget.value; renderGoal();
 });
 document.getElementById('search').addEventListener('input', e => {
-  query = e.currentTarget.value; groupsShown = 8; renderList();
+  query = e.currentTarget.value;
+  /* 찾기는 걸러보기 안에서만 뒤지면 안 된다. '미분류'만 보고 있는데 '쿠팡'을
+     치면 0건이 나오고, 없는 줄 알게 된다. 찾기 시작하면 전체로 넓힌다. */
+  if (query.trim() && filterId !== 'all') filterId = 'all';
+  groupsShown = 8; renderList();
 });
 document.getElementById('moreGroups').addEventListener('click', () => {
   groupsShown += 12; renderList();
 });
 document.getElementById('resetEdits').addEventListener('click', () => {
-  mine.cat = {}; mine.once = {}; persist(); refresh();
+  mine.cat = {}; mine.once = {}; mine.name = {}; persist(); refresh();
+});
+
+/* ═══════════════════════════════════════════════════════════
+   페이 내역 붙여넣기
+
+   간편결제는 카드 명세서에 가맹점이 '네이버페이'로만 남는다. 무엇을
+   샀는지는 결제앱 안에만 있고, 개인이 쓸 수 있는 공개 API는 없다
+   (마이데이터 API는 허가받은 사업자만 쓴다). 그래서 사람이 앱에서
+   복사해 오는 길을 열어 둔다.
+
+   앱마다 내보내는 모양이 다르므로 형식을 정해 두지 않는다. 한 줄 안에
+   날짜와 금액이 있으면 나머지를 가게 이름으로 본다. 그러면 엑셀을
+   긁어 오든 화면을 긁어 오든 다 읽힌다.
+   ═══════════════════════════════════════════════════════════ */
+const DATE_RE = /(20\d{2})[.\-/년\s]+(\d{1,2})[.\-/월\s]+(\d{1,2})\s*일?/;
+const AMT_RE = /(-?[\d,]{3,})\s*원?/g;
+
+function parsePaste(text) {
+  const out = [];
+  for (let line of text.split(/\r?\n/)) {
+    line = line.replace(/\t/g, '  ').trim();
+    if (!line) continue;
+    const d = DATE_RE.exec(line);
+    if (!d) continue;
+    const date = `${d[1]}-${String(+d[2]).padStart(2,'0')}-${String(+d[3]).padStart(2,'0')}`;
+
+    // 금액 후보 중 날짜 부분과 겹치지 않는 가장 큰 값
+    const rest = line.slice(0, d.index) + ' ' + line.slice(d.index + d[0].length);
+    let best = 0, bestTxt = '';
+    AMT_RE.lastIndex = 0;
+    let m;
+    while ((m = AMT_RE.exec(rest))) {
+      const n = Math.abs(+m[1].replace(/,/g, ''));
+      if (n >= 100 && n > best) { best = n; bestTxt = m[0]; }
+    }
+    if (!best) continue;
+
+    let name = rest.replace(bestTxt, ' ')
+      .replace(/[\d,]{3,}\s*원?/g, ' ')
+      .replace(/\s{2,}/g, ' ').trim();
+    /* '쿠팡 결제완료', '일 올리브영' 처럼 앞뒤에 붙는 말은 가게 이름이 아니다.
+       한 번만 지우면 '결제완료'에서 '결제'가 남으므로 안 변할 때까지 돌린다.
+       가운데는 건드리지 않는다 — '원할머니보쌈'의 '원'을 지우면 안 된다. */
+    const EDGE = /^(일|원|결제|승인|완료|취소|구매|주문|사용|적립|포인트|충전)\s+|\s*(결제완료|결제취소|구매확정|결제|승인|완료|취소|구매|주문|사용|적립|포인트|충전)$/;
+    let prev;
+    do { prev = name; name = name.replace(EDGE, '').trim(); } while (name !== prev && name);
+    if (name.length > 40) name = name.slice(0, 40);
+    if (!name) continue;
+    out.push({ date, amount: best, name });
+  }
+  return out;
+}
+
+/* 짝 찾기 — 금액이 같고 날짜가 며칠 안 벌어진 거래.
+   카드 승인일과 페이 결제일이 하루이틀 어긋나는 일이 흔하다. */
+const DAY = 86400000;
+const dnum = s => Date.parse(s + 'T00:00:00');
+
+function applyPaste(items) {
+  // 이름이 뭉뚱그려 찍힌 것부터 채운다. 이미 이름이 멀쩡한 건 건드리지 않는다.
+  const pool = D.rows.filter(r => VAGUE.test(r.c.trim()) || /페이|pay/i.test(r.m || ''));
+  const used = new Set();
+  let filled = 0, already = 0;
+  const missed = [];
+
+  for (const it of items) {
+    let hit = null, gap = 99;
+    for (const r of pool) {
+      if (used.has(r.u) || r.a !== it.amount) continue;
+      const g = Math.abs(dnum(r.d) - dnum(it.date)) / DAY;
+      if (g <= 3 && g < gap) { hit = r; gap = g; }
+    }
+    if (!hit) { missed.push(it); continue; }
+    used.add(hit.u);
+    if (mine.name[hit.u] === it.name) already++; else filled++;
+    mine.name[hit.u] = it.name;
+  }
+  return { filled, already, missed, read: items.length };
+}
+
+document.getElementById('pasteGo').addEventListener('click', () => {
+  const box = document.getElementById('pasteResult');
+  const text = document.getElementById('paste').value;
+  const items = parsePaste(text);
+  if (!items.length) {
+    box.innerHTML = `<div class="warn">읽을 수 있는 줄이 없습니다.
+      한 줄에 <b>날짜와 금액</b>이 같이 있어야 합니다.
+      예: <code>2026-07-31 99,950 쿠팡</code></div>`;
+    return;
+  }
+  const res = applyPaste(items);
+  persist(); refresh();
+  box.innerHTML = `<div class="warn" style="background:var(--good-bg)">
+      <b>${res.read}줄</b>을 읽어 <b>${res.filled}건</b>의 이름을 채웠습니다.
+      ${res.already ? `${res.already}건은 이미 채워져 있었습니다. ` : ''}
+      ${res.missed.length ? `<b>${res.missed.length}건</b>은 금액이 맞는 거래를 못 찾았습니다 —
+        기간이 다르거나, 카드가 아닌 페이머니로 결제해 이 파일에 안 들어온 건일 수 있습니다.` : ''}
+    </div>`
+    + (res.missed.length ? `<details><summary>못 찾은 ${res.missed.length}건 보기</summary>`
+        + res.missed.slice(0, 20).map(m =>
+            `<div class="tx"><div class="c">${esc(m.name)}</div>
+             <div class="a num">${won(m.amount)}</div>
+             <div class="meta">${m.date}</div></div>`).join('') + '</details>' : '');
+});
+
+document.getElementById('pasteClear').addEventListener('click', () => {
+  document.getElementById('paste').value = '';
+  document.getElementById('pasteResult').innerHTML = '';
+});
+
+/* ── 내 설정을 파일로. 브라우저 저장은 언제든 날아간다.
+   새 파일로 화면을 다시 만들어도 거래 식별자는 그대로라 그대로 이어진다. */
+const setNote = document.getElementById('setNote');
+
+document.getElementById('expSet').addEventListener('click', async () => {
+  const data = JSON.stringify({ v:3, saved:new Date().toISOString(), ...mine }, null, 1);
+  if (!window.claude || !window.claude.downloads) {
+    // 저장을 못 쓰면 적어도 복사는 되게 한다
+    document.getElementById('paste').value = data;
+    setNote.textContent = '이 화면에서는 파일 저장이 안 돼서 위 붙여넣기 칸에 넣었습니다. 복사해서 보관하세요.';
+    return;
+  }
+  setNote.textContent = '저장할지 물어봅니다…';
+  try {
+    await window.claude.downloads.save({ filename:'가계부_내설정.json', data });
+    setNote.textContent = '저장했습니다. 폰을 바꾸거나 화면을 다시 만들 때 이 파일을 가져오세요.';
+  } catch (err) {
+    setNote.textContent = (err && err.code) === 'declined' ? '저장을 취소했습니다.' : '저장하지 못했습니다.';
+  }
+});
+
+document.getElementById('impSet').addEventListener('click', () =>
+  document.getElementById('impFile').click());
+
+document.getElementById('impFile').addEventListener('change', e => {
+  const f = e.currentTarget.files && e.currentTarget.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const got = JSON.parse(rd.result);
+      let n = 0;
+      ['cat','once','name'].forEach(k => {
+        if (got[k]) { Object.assign(mine[k], got[k]); n += Object.keys(got[k]).length; }
+      });
+      if (got.tax) Object.assign(mine.tax, got.tax);
+      persist(); refresh(); wireTax();
+      setNote.textContent = `${n}건을 가져왔습니다.` +
+        (got.saved ? ` (${got.saved.slice(0,10)}에 저장한 파일)` : '');
+    } catch (err) { setNote.textContent = '읽을 수 없는 파일입니다. 내보내기로 만든 파일이 맞나요?'; }
+  };
+  rd.onerror = () => { setNote.textContent = '파일을 읽지 못했습니다.'; };
+  rd.readAsText(f);
+  e.currentTarget.value = '';
 });
 
 (function dl() {
