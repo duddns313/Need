@@ -38,6 +38,7 @@ CATEGORIES = {
     '생활용품': VARIABLE,      # 먹는 것 아닌 생필품·미용·세탁
     '교통': VARIABLE,
     '의료·건강': VARIABLE,
+    '반려동물': VARIABLE,     # 병원비가 커서 사람 의료비에 섞이면 둘 다 안 보인다
     '문화·여가': VARIABLE,
     '쇼핑': VARIABLE,
     '경조·선물': VARIABLE,

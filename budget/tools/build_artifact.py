@@ -62,6 +62,12 @@ def load(paths_and_owners) -> tuple[list, dict]:
             for pf in files for a in pf.loans
         ],
     }
+    # 퇴직연금(DC/DB)은 회사가 넣어준 돈이라 세액공제와 상관없다.
+    # 그런데 '연금'이라는 이름 때문에 본인 납입분과 섞이기 쉬워서 따로 뽑아 둔다.
+    wealth['pension_assets'] = [
+        {'name': a.name, 'amount': a.amount}
+        for pf in files for a in pf.assets if '연금' in (a.group or '')
+    ]
     wealth['net'] = wealth['assets'] - wealth['liabilities']
     return txs, wealth
 

@@ -200,6 +200,58 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
         background:var(--watch-bg); border-radius:11px; margin-top:12px; }
 .foot { margin-top:20px; padding-top:14px; border-top:1px solid var(--line); }
 @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
+
+/* ── 한 단계 더 들어가서 보는 화면.
+   탭 위를 통째로 덮는다. 원래 화면 옆에 끼워 넣으면 폰에서 자리가 안 난다.
+   맨 위 '뒤로'는 항상 붙어 있어야 한다 — 목록이 길면 스크롤을 한참 올려야
+   빠져나갈 수 있게 되고, 그 순간 갇힌 느낌이 든다. */
+#detail[hidden] { display:none; }
+#detail {
+  position:fixed; inset:0; z-index:50; overflow-y:auto;
+  background:var(--ground); -webkit-overflow-scrolling:touch;
+}
+#detail .inner { max-width:560px; margin:0 auto; padding:0 14px 40px; }
+.dhead {
+  position:sticky; top:0; z-index:2; background:var(--ground);
+  padding:10px 0 12px; border-bottom:1px solid var(--line); margin-bottom:14px;
+}
+.dhead .back {
+  display:inline-flex; align-items:center; gap:6px; min-height:44px; padding:0 13px 0 9px;
+  border-radius:11px; border:1px solid var(--line); background:var(--surface);
+  color:var(--ink); font:inherit; font-size:14px; font-weight:650; cursor:pointer;
+}
+.dhead .crumb { font-size:11.5px; color:var(--muted); margin:8px 0 0; }
+.dhead h2 { margin:2px 0 0; font-size:19px; font-weight:750; letter-spacing:-.02em; }
+.dhead .tot { display:flex; align-items:baseline; gap:9px; margin-top:4px; flex-wrap:wrap; }
+.dhead .tot .big { font-size:22px; font-weight:750; letter-spacing:-.02em; }
+.dhead .tot .sm { font-size:12.5px; color:var(--ink-2); }
+.sortrow { display:flex; gap:7px; margin-bottom:12px; }
+.sortrow .chip { flex:1; min-height:40px; font-size:13px; }
+.tx { display:grid; grid-template-columns:1fr auto; gap:4px 10px;
+      padding:12px 0; border-bottom:1px solid var(--line); align-items:baseline; }
+.tx:last-of-type { border-bottom:0; }
+.tx .c { font-size:14px; overflow-wrap:anywhere; }
+.tx .a { font-size:15px; font-weight:700; letter-spacing:-.02em; white-space:nowrap; }
+.tx .meta { grid-column:1/-1; font-size:11.5px; color:var(--muted); }
+.tx .pick { grid-column:1/-1; margin-top:7px; }
+.tx.dim .c, .tx.dim .a { color:var(--muted); }
+.drill { cursor:pointer; }
+.drill .nm { text-decoration:underline; text-decoration-color:var(--line);
+             text-underline-offset:3px; }
+.bar-row.drill:hover .bar { filter:brightness(1.08); }
+.hintline { font-size:12px; color:var(--muted); margin:0 0 12px; }
+
+/* 상세 화면의 가게 목록은 이름이 길다. 옆에 좁은 칸을 두면 '주식회사...'
+   처럼 잘려서 어느 가게인지 알 수가 없다. 이름에 한 줄을 통째로 준다. */
+.namebar { display:block; width:100%; border:0; background:transparent; padding:11px 0;
+           font:inherit; text-align:left; cursor:pointer; border-bottom:1px solid var(--line); }
+.namebar:last-child { border-bottom:0; }
+.namebar .r1 { display:flex; justify-content:space-between; gap:10px; align-items:baseline; }
+.namebar .n { font-size:13.5px; overflow-wrap:anywhere; }
+.namebar .v { font-size:13.5px; font-weight:700; white-space:nowrap; }
+.namebar .g { height:8px; border-radius:99px; background:var(--surface-2); margin-top:7px; overflow:hidden; }
+.namebar .g i { display:block; height:8px; border-radius:99px; background:var(--spend); }
+.namebar .sm { font-size:11.5px; color:var(--muted); margin-top:4px; }
 </style>
 
 <div class="page">
@@ -269,7 +321,16 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
 
     <div class="card">
       <h2>항목별</h2>
+      <p class="hintline">막대를 누르면 그 항목에 든 거래를 전부 볼 수 있습니다.</p>
       <div class="bars" id="expBars"></div>
+    </div>
+
+    <div class="card">
+      <h2>무엇으로 결제했나</h2>
+      <p class="sub">간편결제는 가맹점 이름이 <b>「네이버페이」처럼 뭉뚱그려 찍히는 일</b>이 많아
+        무엇을 샀는지 안 남습니다. 눌러서 확인하세요.</p>
+      <div class="bars" id="payBars"></div>
+      <div id="payNote"></div>
     </div>
 
     <div class="card">
@@ -417,9 +478,16 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
         <div class="unit"><input type="text" id="inChungyak" inputmode="numeric" placeholder="0"><span>원</span></div>
       </div>
       <div class="field">
-        <label>무주택 세대주인가요?</label>
-        <div class="hint">주택청약 소득공제는 무주택 세대주만 받을 수 있습니다.</div>
+        <label>집이 있으신가요?</label>
+        <div class="hint">주택청약 소득공제와 월세 세액공제는 <b>무주택자만</b> 받습니다.
+          집이 있으면 대신 <b>주택담보대출 이자</b> 쪽을 봅니다.</div>
         <div class="toggle" id="inHouseless"></div>
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label for="inMortgage">주택담보대출 이자 (연간)</label>
+        <div class="hint">집이 있는 경우입니다. 은행에서 받은 <b>연말정산용 이자상환증명서</b>의 금액입니다.
+          모르면 비워 두세요.</div>
+        <div class="unit"><input type="text" id="inMortgage" inputmode="numeric" placeholder="0"><span>원</span></div>
       </div>
     </div>
 
@@ -433,7 +501,9 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
     <div class="card">
       <h2>연금계좌 한도</h2>
       <p class="sub">연금저축과 IRP를 합쳐 <b>연 900만원</b>까지 세액공제를 받습니다.
-        (연금저축만으로는 600만원까지, 나머지는 IRP로 채웁니다.)</p>
+        (연금저축만으로는 600만원까지, 나머지는 IRP로 채웁니다.)
+        <b>올해 새로 넣은 돈</b>만 셉니다 — 계좌에 이미 쌓여 있는 잔고나
+        회사가 넣어주는 퇴직연금(DC)은 여기 안 들어갑니다.</p>
       <div class="bars" id="pensionBars"></div>
       <div id="pensionNote"></div>
     </div>
@@ -461,6 +531,18 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
 
     <p class="note foot" id="foot"></p>
   </section>
+</div>
+
+<div id="detail" hidden role="dialog" aria-modal="true" aria-label="자세히 보기">
+  <div class="inner">
+    <div class="dhead">
+      <button class="back" id="dBack">&lsaquo; 뒤로</button>
+      <p class="crumb" id="dCrumb"></p>
+      <h2 id="dTitle"></h2>
+      <div class="tot"><span class="big num" id="dTotal"></span><span class="sm" id="dSub"></span></div>
+    </div>
+    <div id="dBody"></div>
+  </div>
 </div>
 
 <div class="tabs" role="tablist">
@@ -776,16 +858,190 @@ document.querySelectorAll('[role=tab]').forEach(tab => {
   });
 });
 
-function drawBars(node, cats, color) {
+/* 이름이 한 줄을 통째로 쓰는 막대. '롯데카드 TELLO SE' 같은 긴 이름이
+   '롯데카드...'로 잘리면 어느 카드인지 알 수가 없다. */
+function drawWideBars(node, cats, color, onDrill) {
+  node.innerHTML = '';
+  const rows = Object.entries(cats).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]);
+  if (!rows.length) { node.appendChild(el('p','note','없습니다.')); return; }
+  const max = rows[0][1], sum = rows.reduce((a,[,v]) => a+v, 0);
+  rows.forEach(([n,v]) => {
+    const row = el(onDrill ? 'button' : 'div', 'namebar',
+      `<div class="r1"><span class="n">${esc(n)}</span><span class="v num">${won(v)}</span></div>
+       <div class="g"><i style="width:${Math.max(v/max*100,2)}%;background:${color}"></i></div>
+       <div class="sm">전체의 ${(v/sum*100).toFixed(0)}%</div>`);
+    if (onDrill) { row.type = 'button'; row.addEventListener('click', () => onDrill(n, v)); }
+    node.appendChild(row);
+  });
+}
+
+/* onDrill 을 주면 막대가 눌리는 막대가 된다. */
+function drawBars(node, cats, color, onDrill) {
   node.innerHTML = '';
   const rows = Object.entries(cats).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]);
   if (!rows.length) { node.appendChild(el('p','note','없습니다.')); return; }
   const max = Math.max(...rows.map(([,v]) => v));
-  rows.forEach(([n,v]) => node.appendChild(el('div','bar-row',
-    `<div class="nm">${esc(n)}</div>
-     <div><div class="bar" style="width:${Math.max(v/max*100,2)}%;background:${color}"></div></div>
-     <div class="vl num">${man(v)}</div>`)));
+  rows.forEach(([n,v]) => {
+    const row = el(onDrill ? 'button' : 'div', 'bar-row' + (onDrill ? ' drill' : ''),
+      `<div class="nm">${esc(n)}</div>
+       <div><div class="bar" style="width:${Math.max(v/max*100,2)}%;background:${color}"></div></div>
+       <div class="vl num">${man(v)}</div>`);
+    if (onDrill) {
+      row.type = 'button';
+      row.style.cssText = 'border:0;background:transparent;padding:0;font:inherit;text-align:inherit;width:100%';
+      row.addEventListener('click', () => onDrill(n, v));
+    }
+    node.appendChild(row);
+  });
 }
+
+/* ═══════════════════════════════════════════════════════════
+   한 단계 더 들어가서 보기
+
+   막대를 눌러 들어가고, 거기서 또 들어갈 수 있어야 한다
+   (결제수단 → 네이버페이 → 그 안의 가게). 그러면 '뒤로'는 한 칸씩
+   되짚어야 하므로 화면을 쌓아 둔다.
+
+   폰의 하드웨어 뒤로가기도 같이 처리한다. 안 그러면 뒤로를 눌렀을 때
+   한 단계 나가는 게 아니라 화면 자체를 벗어나 버린다. 아티팩트는 iframe
+   안이라 history 조작이 막힐 수 있어서, 막히면 화면의 '뒤로' 버튼만으로
+   돌아가게 조용히 물러선다.
+   ═══════════════════════════════════════════════════════════ */
+let stack = [], sortBy = 'amount', histOK = true, txShown = 40;
+
+function openDetail(view) {
+  txShown = 40;
+  stack.push(view);
+  if (stack.length === 1) {
+    try { history.pushState({ detail:1 }, ''); } catch (e) { histOK = false; }
+  }
+  drawDetail();
+}
+
+function closeDetail(fromPop) {
+  if (!stack.length) return;
+  txShown = 40;
+  stack.pop();
+  if (!stack.length && !fromPop && histOK) { try { history.back(); } catch (e) {} }
+  drawDetail();
+}
+
+window.addEventListener('popstate', () => {
+  if (!stack.length) return;
+  stack = [];                 // 뒤로 한 번에 목록 전체를 닫는다
+  drawDetail();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && stack.length) closeDetail(); });
+
+function drawDetail() {
+  const box = document.getElementById('detail');
+  if (!stack.length) {
+    box.hidden = true;
+    document.body.style.overflow = '';
+    return;
+  }
+  const v = stack[stack.length - 1];
+  box.hidden = false;
+  document.body.style.overflow = 'hidden';
+  box.scrollTop = 0;
+
+  document.getElementById('dCrumb').textContent =
+    stack.map(s => s.title).slice(0, -1).concat(v.scope ? [v.scope] : []).join(' › ');
+  document.getElementById('dTitle').textContent = v.title;
+
+  const rows = v.rows;
+  const total = rows.reduce((a,r) => a + r.a, 0);
+  const months = new Set(rows.map(monthOf)).size || 1;
+  document.getElementById('dTotal').textContent = won(total);
+  document.getElementById('dSub').textContent =
+    `${rows.length}건 · ${months > 1 ? `${months}달 · 월평균 ${won(total/months)}` : v.scope || ''}`;
+
+  const body = document.getElementById('dBody');
+  body.innerHTML = '';
+
+  /* 한 단계 더 — 가게 이름끼리 묶어서 보여준다. 그 안으로 또 들어갈 수 있다. */
+  if (v.byName !== false) {
+    const bag = {};
+    rows.forEach(r => (bag[r.c] || (bag[r.c] = [])).push(r));
+    const names = Object.entries(bag).map(([c, rs]) =>
+      [c, rs.reduce((a,r) => a + r.a, 0), rs]).sort((a,b) => b[1]-a[1]);
+    if (names.length > 1) {
+      const card = el('div','card','<h2>가게별</h2>'
+        + '<p class="hintline">누르면 그 가게 거래만 봅니다.</p>');
+      const max = names[0][1];
+      names.slice(0, 15).forEach(([c, sum, rs]) => {
+        const row = el('button','namebar',
+          `<div class="r1"><span class="n">${esc(c)}</span>
+             <span class="v num">${won(sum)}</span></div>
+           <div class="g"><i style="width:${Math.max(sum/max*100,2)}%"></i></div>
+           <div class="sm">${rs.length}건 · 전체의 ${(sum/total*100).toFixed(0)}%</div>`);
+        row.type = 'button';
+        row.addEventListener('click', () => openDetail({
+          title: c, scope: v.scope, rows: rs, byName: false }));
+        card.appendChild(row);
+      });
+      if (names.length > 15) card.appendChild(el('p','note',
+        `그 밖에 ${names.length - 15}곳이 더 있습니다. 아래 목록에 전부 있습니다.`));
+      body.appendChild(card);
+    }
+  }
+
+  /* 언제 컸는지 */
+  if (months > 1) {
+    const per = {};
+    rows.forEach(r => per[monthOf(r)] = (per[monthOf(r)] || 0) + r.a);
+    const card = el('div','card','<h2>달마다</h2>');
+    const bars = el('div','bars');
+    const mx = Math.max(...Object.values(per));
+    Object.keys(per).sort().forEach(m => bars.appendChild(el('div','bar-row',
+      `<div class="nm">${m.slice(0,4)}.${m.slice(5)}</div>
+       <div><div class="bar" style="width:${Math.max(per[m]/mx*100,2)}%;background:var(--spend-2)"></div></div>
+       <div class="vl num">${man(per[m])}</div>`)));
+    card.appendChild(bars);
+    body.appendChild(card);
+  }
+
+  /* 거래 하나하나. 여기서도 분류를 고칠 수 있다. */
+  const card = el('div','card','<h2>거래 하나하나</h2>');
+  const sort = el('div','sortrow');
+  [['amount','금액 큰 순'], ['date','최근 순']].forEach(([id, label]) => {
+    const b = el('button','chip',label);
+    b.setAttribute('aria-pressed', sortBy === id ? 'true' : 'false');
+    b.addEventListener('click', () => { sortBy = id; drawDetail(); });
+    sort.appendChild(b);
+  });
+  card.appendChild(sort);
+
+  const sorted = [...rows].sort((a,b) =>
+    sortBy === 'amount' ? b.a - a.a : (a.d < b.d ? 1 : a.d > b.d ? -1 : 0));
+  sorted.slice(0, txShown).forEach(r => {
+    const tx = el('div','tx' + (natOf(r) === EXCLUDED ? ' dim' : ''),
+      `<div class="c">${esc(r.c)}</div>
+       <div class="a num">${won(r.a)}</div>
+       <div class="meta">${r.d} · ${esc(r.m || '')} · ${esc(catOf(r))}${
+         mine.cat[r.u] ? ' · 내가 고침' : ''}${isOnce(r) ? ' · 일회성' : ''}</div>`);
+    const pick = el('div','pick');
+    pick.appendChild(catSelect(catOf(r), val => {
+      if (val === r.k) delete mine.cat[r.u]; else mine.cat[r.u] = val;
+      persist(); refresh(); drawDetail();
+    }));
+    tx.appendChild(pick);
+    card.appendChild(tx);
+  });
+  if (sorted.length > txShown) {
+    const more = el('button','chip',`${sorted.length - txShown}건 더 보기`);
+    more.style.cssText = 'width:100%; margin-top:12px';
+    more.addEventListener('click', () => { txShown += 40; drawDetail(); });
+    card.appendChild(more);
+  }
+  body.appendChild(card);
+}
+
+document.getElementById('dBack').addEventListener('click', () => closeDetail());
+
+/* 어떤 거래들을 뽑을지 — 달을 한정할 수도, 전체 기간으로 볼 수도 있다 */
+const pick = (test, month) => D.rows.filter(r =>
+  (!month || monthOf(r) === month) && test(r));
 
 /* ─────────────────────────────── 요약 */
 function renderHome() {
@@ -871,13 +1127,43 @@ function renderMonth() {
       `<span><i style="background:${COLOR[k]||'var(--spend)'}"></i>${esc(k)} ${man(v)}</span>`).join('')
       + `<span style="color:var(--muted)">사먹기 ${(eat/ftot*100).toFixed(0)}%</span>`;
   } else { split.innerHTML = ''; leg.innerHTML = '<span class="note">이 달은 기록이 없습니다.</span>'; }
-  drawBars(document.getElementById('foodBars'), F, 'var(--spend)');
+  const intoCat = (k) => openDetail({
+    title: k, scope: `${m.slice(0,4)}년 ${+m.slice(5)}월`,
+    rows: pick(r => catOf(r) === k, m) });
 
-  drawBars(document.getElementById('expBars'), t.exp_cat, 'var(--spend)');
-  drawBars(document.getElementById('incBars'), t.inc_cat, 'var(--income)');
-  drawBars(document.getElementById('savBars'), t.sav_cat, 'var(--save)');
+  drawBars(document.getElementById('foodBars'), F, 'var(--spend)', intoCat);
+  drawBars(document.getElementById('expBars'), t.exp_cat, 'var(--spend)', intoCat);
+  drawBars(document.getElementById('incBars'), t.inc_cat, 'var(--income)', intoCat);
+  drawBars(document.getElementById('savBars'), t.sav_cat, 'var(--save)', intoCat);
+  drawPay(m);
   drawTrend();
   drawExcluded();
+}
+
+/* 무엇으로 결제했나.
+   간편결제는 가맹점이 '네이버페이'처럼 뭉뚱그려 찍히는 일이 많다. 그러면
+   내역에 이름은 남는데 무엇을 샀는지는 안 남는다. 얼마가 그렇게 묻혀 있는지
+   숫자로 보여줘야 앱에 들어가 확인할 마음이 생긴다. */
+const VAGUE = /^(네이버페이|카카오페이|토스|페이코|삼성페이|애플페이|스마일캐시)$/;
+
+function drawPay(m) {
+  const rows = pick(r => { const n = natOf(r); return n === FIXED || n === VARIABLE; }, m);
+  const bag = {};
+  rows.forEach(r => { const k = r.m || '(적힌 것 없음)'; bag[k] = (bag[k] || 0) + r.a; });
+  drawWideBars(document.getElementById('payBars'), bag, 'var(--navy)', (k) => openDetail({
+    title: k, scope: `${m.slice(0,4)}년 ${+m.slice(5)}월`,
+    rows: rows.filter(r => (r.m || '(적힌 것 없음)') === k) }));
+
+  const vague = rows.filter(r => VAGUE.test(r.c.trim()));
+  const sum = vague.reduce((a,r) => a + r.a, 0);
+  const node = document.getElementById('payNote');
+  if (!sum) { node.innerHTML = ''; return; }
+  node.innerHTML = `<div class="how" style="margin-top:12px">이 달 <b>${won(sum)}</b>(${vague.length}건)은
+    가맹점이 <b>「${esc(vague[0].c.trim())}」처럼 결제앱 이름으로만</b> 찍혀 있어 무엇을 샀는지 모릅니다.
+    네이버페이·카카오페이 앱의 <b>결제내역</b>에서 확인한 다음, 「내역」 탭에서 분류를 정해 주세요.
+    <button class="chip" id="vagueBtn" style="width:100%; margin-top:10px">이 ${vague.length}건 보기</button></div>`;
+  document.getElementById('vagueBtn').addEventListener('click', () => openDetail({
+    title: '결제앱 이름으로만 찍힌 것', scope: `${m.slice(0,4)}년 ${+m.slice(5)}월`, rows: vague }));
 }
 
 function drawTrend() {
@@ -909,17 +1195,22 @@ function drawTrend() {
 }
 
 function drawExcluded() {
-  const fill = (node, obj) => {
+  const fill = (node, obj, side) => {
     node.innerHTML = '';
     const rows = Object.entries(obj).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]);
     if (!rows.length) { node.appendChild(el('tr',null,'<td colspan="2" class="note">뺀 것이 없습니다.</td>')); return; }
-    rows.forEach(([k,v]) => node.appendChild(el('tr',null,
-      `<td>${esc(k)}</td><td class="num">${won(v)}</td>`)));
+    rows.forEach(([k,v]) => {
+      const tr = el('tr','drill',
+        `<td><span class="nm">${esc(k)}</span></td><td class="num">${won(v)}</td>`);
+      tr.addEventListener('click', () => openDetail({ title:k, scope:'전체 기간',
+        rows: pick(r => catOf(r) === k && r.t === side) }));
+      node.appendChild(tr);
+    });
     node.appendChild(el('tr',null,
       `<td><b>합계</b></td><td class="num"><b>${won(rows.reduce((a,[,v])=>a+v,0))}</b></td>`));
   };
-  fill(document.getElementById('excluded'), EXCL);
-  fill(document.getElementById('excludedIn'), EXCL_IN);
+  fill(document.getElementById('excluded'), EXCL, '지출');
+  fill(document.getElementById('excludedIn'), EXCL_IN, '수입');
 
   /* 환불은 원래 그 항목의 지출을 깎아야 맞지만, 어느 결제를 물린 건지
      내역만으로는 알 수 없다. 소득에서만 뺐다는 뜻이라 숨기지 않고 적는다. */
@@ -1017,6 +1308,14 @@ function renderList() {
          : `${esc(g.cat || '여러 항목')}`}</div>
        <div class="when">${g.count}건 · ${rs[0].d} ~ ${rs[rs.length-1].d}${edited ? ' · 내가 고침' : ''}</div>`);
 
+    if (g.count > 1) {
+      const open = el('button','chip','거래 ' + g.count + '건 보기');
+      open.style.cssText = 'width:100%; margin-top:10px; min-height:40px; font-size:13px';
+      open.addEventListener('click', () => openDetail({
+        title: g.content, scope: '전체 기간', rows: rs, byName: false }));
+      item.appendChild(open);
+    }
+
     const acts = el('div', 'rowacts');
     acts.appendChild(catSelect(g.cat, v => {
       rs.forEach(r => { if (v === r.k) delete mine.cat[r.u]; else mine.cat[r.u] = v; });
@@ -1069,7 +1368,7 @@ const HOW = {
 function actionRow(a, take) {
   const tops = a.top.length
     ? `<div class="why">큰 곳: ${a.top.map(t => `${esc(t.content)} 월 ${man(t.per_month)}`).join(' · ')}</div>` : '';
-  return el('div','act-row',
+  const row = el('div','act-row',
     `<div class="top"><span class="cat">${esc(a.category)}</span>
        <span class="save">월 ${man(take != null ? take : a.save_month)} 아낌</span></div>
      <div class="from">보통 ${won(a.now)} → <b>${won(a.goal)}</b></div>
@@ -1077,6 +1376,14 @@ function actionRow(a, take) {
      <div class="why">${a.why} 1년이면 ${won((take != null ? take : a.save_month)*12)}.</div>
      ${tops}
      ${HOW[a.category] ? `<div class="how">${HOW[a.category]}</div>` : ''}`);
+  const open = el('button','chip','최근 6달 내역 보기');
+  open.style.cssText = 'width:100%; margin-top:10px; min-height:40px; font-size:13px';
+  const ms = new Set(recentMonths());
+  open.addEventListener('click', () => openDetail({
+    title: a.category, scope: '최근 6달',
+    rows: D.rows.filter(r => catOf(r) === a.category && ms.has(monthOf(r))) }));
+  row.appendChild(open);
+  return row;
 }
 
 function renderGoal() {
@@ -1207,7 +1514,7 @@ function renderTax() {
             : '연금저축 한도는 다 썼으니 IRP로 채웁니다.'),
   });
 
-  /* ── 주택청약 */
+  /* ── 집이 없으면 청약, 있으면 주담대 이자 */
   if (houseless) {
     const room = Math.max(CHUNGYAK_CAP - chungyak, 0);
     if (room > 0 && (!salary || salary <= CHUNGYAK_LINE)) items.push({
@@ -1216,6 +1523,15 @@ function renderTax() {
       note: `연 ${won(CHUNGYAK_CAP)}까지 넣은 돈의 <b>40%</b>가 소득에서 빠집니다. `
           + `${won(room)}을 더 넣으면 대략 <b>${won(Math.round(room * CHUNGYAK_RATE * .165))}</b> 아낍니다. `
           + '무주택 세대주이고 총급여 7천만원 이하일 때입니다.',
+    });
+  } else if (mine.tax.houseless === '0') {
+    const interest = taxVal('mortgage');
+    if (interest > 0) items.push({
+      label: '주택담보대출 이자 소득공제',
+      money: Math.round(interest * .165),
+      note: `이자 ${won(interest)}가 <b>소득에서 통째로 빠집니다</b>(세액공제가 아니라 소득공제라 `
+          + `세율만큼 줄어듭니다). 대략 <b>${won(Math.round(interest * .165))}</b>입니다. `
+          + '취득 당시 기준시가·상환기간·고정금리 여부에 따라 한도가 300만~2,000만원으로 갈립니다.',
     });
   }
 
@@ -1247,13 +1563,21 @@ function renderTax() {
        <div><div class="bar" style="width:${pensionRoom/PENSION_CAP*100}%;background:var(--line)"></div></div>
        <div class="vl num">${man(pensionRoom)}</div></div>`;
 
-  document.getElementById('pensionNote').innerHTML = pensionRoom > 0
+  const dc = (D.pension_assets || []).reduce((a,p) => a + p.amount, 0);
+  document.getElementById('pensionNote').innerHTML = (pensionRoom > 0
     ? `<div class="how" style="margin-top:12px">연금계좌는 <b>만 55세 이후</b>에 연금으로 받는 조건입니다.
        중간에 깨면 받은 세금을 도로 물어야 하니, <b>당장 쓸 일 없는 돈</b>만 넣으세요.
        한 번에 900만원을 넣기 부담되면 매달 자동이체로 나눠 넣어도 공제는 똑같이 받습니다.
-       12월에 몰아 넣어도 그해 공제는 인정됩니다.</div>`
+       12월에 몰아 넣어도 그해 공제는 인정됩니다.<br><br>
+       <b>계좌를 새로 만들 필요는 없습니다.</b> 쓰던 연금저축 계좌에 그냥 더 넣으면 됩니다.
+       600만원을 채운 뒤 남는 300만원은 IRP나 <b>회사 퇴직연금(DC) 계좌의 추가납입</b>으로
+       채울 수 있습니다 — DC 계좌에 본인 돈을 더 넣는 것도 같은 900만원 한도에 들어갑니다.</div>`
     : `<div class="how" style="margin-top:12px">한도를 다 쓰셨습니다. 여기서 더 모으실 거면
-       <b>ISA</b>를 보세요 — 아래 「더 볼 것」에 적어 뒀습니다.</div>`;
+       <b>ISA</b>를 보세요 — 아래 「더 볼 것」에 적어 뒀습니다.</div>`)
+    + (dc ? `<div class="how" style="margin-top:10px">참고로 퇴직연금(DC) 잔고가
+       <b>${won(dc)}</b> 있습니다. 이건 회사가 넣어준 돈이라 <b>세액공제와는 상관없습니다.</b>
+       다만 DB에서 DC로 바꾸셨다면 <b>운용은 이제 본인 몫</b>입니다 —
+       예금으로만 두면 물가만큼도 못 따라갑니다. 한 번은 들여다보세요.</div>` : '');
 
   /* ── 카드 */
   const mix = cardMix();
@@ -1329,7 +1653,8 @@ function renderTax() {
 }
 
 function wireTax() {
-  [['inSalary','salary'], ['inPension','pension'], ['inIrp','irp'], ['inChungyak','chungyak']]
+  [['inSalary','salary'], ['inPension','pension'], ['inIrp','irp'],
+   ['inChungyak','chungyak'], ['inMortgage','mortgage']]
     .forEach(([id, key]) => {
       const inp = document.getElementById(id);
       inp.value = mine.tax[key] ? numIn(mine.tax[key]).toLocaleString('ko-KR') : '';
@@ -1347,7 +1672,7 @@ function wireTax() {
 
   const box = document.getElementById('inHouseless');
   box.innerHTML = '';
-  [['1','네, 무주택 세대주'], ['0','아니요']].forEach(([v, label]) => {
+  [['0','네, 있습니다'], ['1','아니요']].forEach(([v, label]) => {
     const b = el('button','chip',label);
     // 안 고른 상태를 '아니요'로 대신 답해 주지 않는다. 둘 다 안 눌린 채로 둔다.
     b.setAttribute('aria-pressed', mine.tax.houseless === v ? 'true' : 'false');
