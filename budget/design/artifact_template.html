@@ -326,6 +326,17 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
     </div>
 
     <div class="card">
+      <h2>용돈</h2>
+      <p class="sub">따로 쓰는 내 돈입니다. 어느 결제수단이 용돈인지 골라 두면
+        그 수단으로 나간 것만 따로 셉니다.</p>
+      <div class="chiprow" id="pocketPick"></div>
+      <div class="fig num" id="pocketFig" style="font-size:30px"></div>
+      <p class="note" id="pocketNote"></p>
+      <div class="bars" id="pocketBars" style="margin-top:12px"></div>
+      <div id="pocketGap"></div>
+    </div>
+
+    <div class="card">
       <h2>무엇으로 결제했나</h2>
       <p class="sub">간편결제는 가맹점 이름이 <b>「네이버페이」처럼 뭉뚱그려 찍히는 일</b>이 많아
         무엇을 샀는지 안 남습니다. 눌러서 확인하세요.</p>
@@ -394,8 +405,11 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
 
     <div class="card">
       <h2>페이 내역 붙여넣기</h2>
-      <p class="sub">간편결제는 가맹점이 <b>「네이버페이」</b>처럼만 찍혀서 무엇을 샀는지 안 남습니다.
-        결제앱에서 내역을 복사해 여기 붙여넣으면 <b>날짜와 금액으로 짝을 찾아</b> 진짜 가게 이름을 채웁니다.</p>
+      <p class="sub">두 가지에 씁니다.<br>
+        하나, 간편결제는 가맹점이 <b>「네이버페이」</b>처럼만 찍혀서 무엇을 샀는지 안 남습니다 —
+        <b>이름 채우기</b>로 진짜 가게 이름을 붙입니다.<br>
+        둘, 뱅샐에 <b>연동 안 된 카드</b>는 쓴 내역이 아예 없습니다 —
+        <b>거래 추가</b>로 명세서를 그대로 넣습니다.</p>
       <details open>
         <summary>어디서 가져오나요</summary>
         <div class="how" style="margin-top:4px">
@@ -413,8 +427,18 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
         style="width:100%; margin-top:12px; border-radius:11px; border:1px solid var(--line);
                background:var(--surface); color:var(--ink); font:inherit; font-size:16px;
                padding:11px 13px; resize:vertical"></textarea>
+      <div class="field" style="margin-top:12px; margin-bottom:8px">
+        <label>붙여넣은 것을 어떻게 할까요</label>
+        <div class="toggle" id="pasteMode"></div>
+        <div class="hint" id="pasteModeHint" style="margin-top:6px"></div>
+      </div>
+      <div class="field" id="pasteWhoWrap" hidden>
+        <label for="pasteWho">어느 카드 · 통장인가요</label>
+        <div class="hint">뱅샐에 연동 안 된 카드 이름을 적으세요. 예: 신한카드</div>
+        <div class="unit"><input type="text" id="pasteWho" placeholder="신한카드" style="text-align:left"></div>
+      </div>
       <div class="rowacts" style="margin-top:10px">
-        <button class="chip" id="pasteGo">읽어서 채우기</button>
+        <button class="chip" id="pasteGo">읽어서 넣기</button>
         <button class="chip" id="pasteClear">지우기</button>
       </div>
       <div id="pasteResult"></div>
@@ -691,11 +715,11 @@ const INCOME = '수입', FIXED = '고정비', VARIABLE = '변동비', SAVING = '
    저장이 막힌 브라우저도 있어서 실패를 삼키고 계속 돌아가게 한다.
    ═══════════════════════════════════════════════════════════ */
 const KEY = 'budget.v3';
-let mine = { cat:{}, once:{}, tax:{}, name:{} }, canStore = true;
+let mine = { cat:{}, once:{}, tax:{}, name:{}, pocket:{}, add:[] }, canStore = true;
 try {
   const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
-  mine = { cat:raw.cat || {}, once:raw.once || {},
-           tax:raw.tax || {}, name:raw.name || {} };
+  mine = { cat:raw.cat || {}, once:raw.once || {}, tax:raw.tax || {},
+           name:raw.name || {}, pocket:raw.pocket || {}, add:raw.add || [] };
 } catch (e) { canStore = false; }
 const persist = () => { if (!canStore) return;
   try { localStorage.setItem(KEY, JSON.stringify(mine)); } catch (e) { canStore = false; } };
@@ -704,6 +728,14 @@ const persist = () => { if (!canStore) return;
 const catOf = r => mine.cat[r.u] || r.k;
 /* 페이 내역에서 찾아 채운 진짜 가게 이름이 있으면 그걸 쓴다 */
 const nameOf = r => (mine.name && mine.name[r.u]) || r.c;
+
+/* ── 손으로 넣은 거래.
+   신한카드처럼 뱅샐에 연동 안 된 카드는 쓴 내역이 파일에 한 줄도 없다.
+   카드값 나간 것만 보이고 무엇을 샀는지는 안 보인다. 그 카드로 쓴 돈은
+   가계부 어디에도 안 잡히므로, 명세서를 붙여넣어 직접 채울 수 있게 한다. */
+const addedRows = () => (mine.add || []).map(a => ({ ...a, added: true }));
+let ROWS = D.rows.concat(addedRows());
+const rebuildRows = () => { ROWS = D.rows.concat(addedRows()); };
 const natOf = r => D.cats[catOf(r)] || VARIABLE;
 const monthOf = r => r.d.slice(0, 7);
 const isOnce = r => !!mine.once[r.u];
@@ -718,6 +750,7 @@ const REAL = 300_000;      // 이보다 적은 달은 내보내기 경계에 잘
 let PER, MONTHS, BASE, HEALTH, ACTS, LEAKS, SPIKES, GROUPS, EXCL, EXCL_IN;
 
 function recompute() {
+  rebuildRows();
   PER = {};
   const bag = m => PER[m] || (PER[m] = {
     income:0, fixed:0, variable:0, saving:0,
@@ -726,7 +759,7 @@ function recompute() {
   });
   D.food_keys.forEach(k => {});
 
-  for (const r of D.rows) {
+  for (const r of ROWS) {
     const p = bag(monthOf(r)), k = catOf(r), n = natOf(r);
     if (n === EXCLUDED) {
       const side = r.t === '수입' ? p.excl_in : (r.t === '지출' ? p.excl : null);
@@ -766,7 +799,7 @@ function totals(m, plainMode) {
               exp_cat:{...p.exp_cat}, inc_cat:{...p.inc_cat}, sav_cat:{...p.sav_cat},
               food:{...p.food} };
   if (!plainMode) return b;
-  for (const r of D.rows) {
+  for (const r of ROWS) {
     if (monthOf(r) !== m || !isOnce(r) || !counted(r)) continue;
     const k = catOf(r), n = natOf(r);
     if (n === INCOME)      { b.income -= r.a;   b.inc_cat[k] -= r.a; }
@@ -807,7 +840,7 @@ const verdictOf = (v, good, watch, higherBetter) => higherBetter
 function foodAll() {
   const parts = {};
   D.food_keys.forEach(k => parts[k] = 0);
-  for (const r of D.rows) if (parts[catOf(r)] != null) parts[catOf(r)] += r.a;
+  for (const r of ROWS) if (parts[catOf(r)] != null) parts[catOf(r)] += r.a;
   const total = Object.values(parts).reduce((a,v) => a+v, 0);
   const eatout = total - (parts[D.food_keys[0]] || 0);
   return { parts, total, eatout, ratio: total ? eatout/total : 0 };
@@ -854,7 +887,7 @@ function health() {
   }
 
   let unknown = 0, tot = 0;
-  for (const r of D.rows) { const n = natOf(r);
+  for (const r of ROWS) { const n = natOf(r);
     if (n === FIXED || n === VARIABLE) { tot += r.a; if (catOf(r) === '미분류') unknown += r.a; } }
   if (tot) out.push({ key:'unknown', label:'정체 모를 지출', display:(unknown/tot*100).toFixed(0)+'%',
     verdict: verdictOf(unknown/tot, .03, .10, false),
@@ -871,7 +904,7 @@ const HABIT_RATIO = .67, MAX_CUT = .40;
 
 function monthlyOf(category) {
   const out = {};
-  for (const r of D.rows) if (catOf(r) === category) {
+  for (const r of ROWS) if (catOf(r) === category) {
     const m = monthOf(r); out[m] = (out[m] || 0) + r.a; }
   return out;
 }
@@ -910,7 +943,7 @@ function actions() {
 /* 그 항목에서 돈이 실제로 어디로 갔는지 — '어떻게 줄이나'의 근거 */
 function topMerchants(category, ms, n) {
   const set = new Set(ms), bag = {};
-  for (const r of D.rows) if (catOf(r) === category && set.has(monthOf(r)))
+  for (const r of ROWS) if (catOf(r) === category && set.has(monthOf(r)))
     bag[nameOf(r)] = (bag[nameOf(r)] || 0) + r.a;
   return Object.entries(bag).sort((a,b) => b[1]-a[1]).slice(0, n)
     .map(([c,v]) => ({ content:c, per_month: Math.round(v / ms.length) }));
@@ -918,7 +951,7 @@ function topMerchants(category, ms, n) {
 
 function leaks() {
   const g = {};
-  for (const r of D.rows) {
+  for (const r of ROWS) {
     const k = catOf(r);
     if (k !== '구독료' && k !== '통신' && k !== '보험') continue;
     const n = nameOf(r), e = g[n] || (g[n] = { months:new Set(), amount:0, category:k });
@@ -935,14 +968,14 @@ function leaks() {
 const MIN_SAMPLES = 5, MULTIPLE = 4, MIN_AMOUNT = 100_000, UNKNOWN_ASK = 1_000_000;
 function spikes() {
   const bucket = {};
-  for (const r of D.rows) { const k = catOf(r);
+  for (const r of ROWS) { const k = catOf(r);
     if (!counted(r) || k === '미분류' || isOnce(r)) continue;
     (bucket[k] || (bucket[k] = [])).push(r.a); }
   const base = {};
   for (const [k, xs] of Object.entries(bucket)) if (xs.length >= MIN_SAMPLES) base[k] = median(xs);
 
   const out = [];
-  for (const r of D.rows) {
+  for (const r of ROWS) {
     const k = catOf(r);
     if (!counted(r) || k === '미분류') continue;
     const usual = base[k], ratio = usual ? r.a / usual : null;
@@ -957,7 +990,7 @@ function spikes() {
 /* ── 같은 이름끼리 묶기. 한 번에 고치라고. */
 function groups() {
   const g = {};
-  for (const r of D.rows) {
+  for (const r of ROWS) {
     const n = nameOf(r), e = g[n] || (g[n] = { content:n, count:0, amount:0, uids:[], cats:new Set() });
     e.count++; e.amount += r.a; e.uids.push(r.u); e.cats.add(catOf(r));
   }
@@ -1161,13 +1194,13 @@ function drawDetail() {
 document.getElementById('dBack').addEventListener('click', () => closeDetail());
 
 /* 어떤 거래들을 뽑을지 — 달을 한정할 수도, 전체 기간으로 볼 수도 있다 */
-const pick = (test, month) => D.rows.filter(r =>
+const pick = (test, month) => ROWS.filter(r =>
   (!month || monthOf(r) === month) && test(r));
 
 /* ─────────────────────────────── 요약 */
 function renderHome() {
   document.getElementById('homeLede').textContent =
-    `${D.range[0]} ~ ${D.range[1]} · 거래 ${D.rows.length.toLocaleString('ko-KR')}건`;
+    `${D.range[0]} ~ ${D.range[1]} · 거래 ${ROWS.length.toLocaleString('ko-KR')}건`;
   if (!BASE) return;
   document.getElementById('baseNote').textContent =
     `최근 ${BASE.months.length}달(${BASE.months[0]} ~ ${BASE.months[BASE.months.length-1]})의 가운뎃값입니다. `
@@ -1257,9 +1290,87 @@ function renderMonth() {
   drawBars(document.getElementById('expBars'), t.exp_cat, 'var(--spend)', intoCat);
   drawBars(document.getElementById('incBars'), t.inc_cat, 'var(--income)', intoCat);
   drawBars(document.getElementById('savBars'), t.sav_cat, 'var(--save)', intoCat);
+  renderPocket(m);
   drawPay(m);
   drawTrend();
   drawExcluded();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   용돈
+
+   부부가 같이 쓰는 돈과 각자 알아서 쓰는 돈은 성격이 다르다. 섞어 놓으면
+   '이번 달 왜 이렇게 썼지'가 안 풀린다. 어느 결제수단이 용돈인지 한 번
+   골라 두면 그 수단으로 나간 것만 따로 센다.
+
+   문제가 하나 더 있다. 연동 안 된 카드는 카드값 나간 것만 보이고 무엇을
+   샀는지는 파일에 한 줄도 없다. 그 카드로 쓴 돈은 가계부 어디에도 안
+   잡힌다. 그래서 '얼마가 안 보이는지'를 숫자로 알려준다.
+   ═══════════════════════════════════════════════════════════ */
+const isPocket = r => !!(mine.pocket || {})[r.m || ''];
+
+function pocketMethods() {
+  const bag = {};
+  for (const r of ROWS) { const m = r.m || '(없음)';
+    bag[m] = (bag[m] || 0) + (counted(r) ? r.a : 0); }
+  return Object.keys(bag).sort((a,b) => bag[b] - bag[a]);
+}
+
+function renderPocket(m) {
+  const box = document.getElementById('pocketPick');
+  box.innerHTML = '';
+  pocketMethods().slice(0, 10).forEach(name => {
+    const on = !!(mine.pocket || {})[name];
+    const b = el('button','chip', name);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.addEventListener('click', () => {
+      mine.pocket = mine.pocket || {};
+      if (on) delete mine.pocket[name]; else mine.pocket[name] = 1;
+      persist(); refresh();
+    });
+    box.appendChild(b);
+  });
+
+  const picked = Object.keys(mine.pocket || {});
+  const fig = document.getElementById('pocketFig');
+  const note = document.getElementById('pocketNote');
+  const bars = document.getElementById('pocketBars');
+  const gap = document.getElementById('pocketGap');
+
+  if (!picked.length) {
+    fig.textContent = '';
+    note.textContent = '위에서 용돈으로 쓰는 카드나 통장을 고르세요.';
+    bars.innerHTML = ''; gap.innerHTML = '';
+    return;
+  }
+
+  const here = ROWS.filter(r => isPocket(r) && monthOf(r) === m && counted(r)
+    && (natOf(r) === FIXED || natOf(r) === VARIABLE));
+  const sum = here.reduce((a,r) => a + r.a, 0);
+  const all = ROWS.filter(r => isPocket(r) && counted(r)
+    && (natOf(r) === FIXED || natOf(r) === VARIABLE));
+  const months = new Set(all.map(monthOf)).size || 1;
+
+  fig.innerHTML = wonf(sum);
+  fig.style.color = 'var(--spend)';
+  note.innerHTML = `${m.slice(0,4)}년 ${+m.slice(5)}월 · 전체 기간 평균 월 <b>${won(all.reduce((a,r)=>a+r.a,0)/months)}</b>`;
+
+  const byCat = {};
+  here.forEach(r => byCat[catOf(r)] = (byCat[catOf(r)] || 0) + r.a);
+  drawBars(bars, byCat, 'var(--spend)', k => openDetail({
+    title: `용돈 · ${k}`, scope: `${m.slice(0,4)}년 ${+m.slice(5)}월`,
+    rows: here.filter(r => catOf(r) === k) }));
+
+  /* 연동 안 된 카드 — 카드값은 나갔는데 산 내역이 없는 경우 */
+  const paid = ROWS.filter(r => catOf(r) === '카드대금' && isPocket(r));
+  const paidSum = paid.reduce((a,r) => a + r.a, 0);
+  const nameHint = paid.length ? paid[0].c : '';
+  gap.innerHTML = paidSum > 0
+    ? `<div class="how" style="margin-top:14px">이 수단에서 <b>카드값으로 ${won(paidSum)}</b>이 나갔습니다.
+       그 카드가 뱅샐에 연동돼 있지 않으면 <b>무엇을 샀는지는 파일에 없습니다</b> —
+       금액만큼 소비가 통째로 빠져 있다는 뜻입니다.
+       카드사 앱에서 이용내역을 복사해 「내역」 탭의 <b>붙여넣기 → 거래 추가</b>로 넣으면
+       그때부터 제대로 잡힙니다.${nameHint ? ` (${esc(nameHint)})` : ''}</div>` : '';
 }
 
 /* 무엇으로 결제했나.
@@ -1350,6 +1461,8 @@ const FILTERS = [
   { id:'spike',   label:'큰 거래',  test: r => SPIKE_SET.has(r.u) },
   { id:'edited',  label:'내가 고친 것', test: r => !!mine.cat[r.u] },
   { id:'once',    label:'일회성',   test: r => isOnce(r) },
+  { id:'pocket',  label:'용돈',     test: r => isPocket(r) },
+  { id:'added',   label:'직접 넣은 것', test: r => !!r.added },
   { id:'spend',   label:'쓴 돈',    test: r => { const n = natOf(r); return n === FIXED || n === VARIABLE; } },
   { id:'save',    label:'저축·투자', test: r => natOf(r) === SAVING },
   { id:'income',  label:'번 돈',    test: r => natOf(r) === INCOME },
@@ -1361,14 +1474,14 @@ let SPIKE_SET = new Set();
 function currentRows() {
   const f = FILTERS.find(x => x.id === filterId);
   const q = query.trim().toLowerCase();
-  return D.rows.filter(r => (!f || f.test(r)) && (!q || nameOf(r).toLowerCase().includes(q) || r.c.toLowerCase().includes(q)));
+  return ROWS.filter(r => (!f || f.test(r)) && (!q || nameOf(r).toLowerCase().includes(q) || r.c.toLowerCase().includes(q)));
 }
 
 function renderFilters() {
   const box = document.getElementById('filters');
   box.innerHTML = '';
   FILTERS.forEach(f => {
-    const n = D.rows.filter(f.test).length;
+    const n = ROWS.filter(f.test).length;
     const b = el('button', 'chip', `${f.label} ${n}`);
     b.setAttribute('aria-pressed', f.id === filterId ? 'true' : 'false');
     b.addEventListener('click', () => { filterId = f.id; groupsShown = 8; renderList(); });
@@ -1419,7 +1532,7 @@ function renderList() {
   box.innerHTML = '';
   if (!gs.length) { box.appendChild(el('p','note','해당하는 거래가 없습니다.')); }
   gs.slice(0, groupsShown).forEach(g => {
-    const rs = D.rows.filter(r => nameOf(r) === g.content);
+    const rs = ROWS.filter(r => nameOf(r) === g.content);
     const edited = rs.some(r => mine.cat[r.u]);
     const anyOnce = rs.some(r => isOnce(r));
     const sp = SPIKES.filter(s => nameOf(s) === g.content)[0];
@@ -1504,7 +1617,7 @@ function actionRow(a, take) {
   const ms = new Set(recentMonths());
   open.addEventListener('click', () => openDetail({
     title: a.category, scope: '최근 6달',
-    rows: D.rows.filter(r => catOf(r) === a.category && ms.has(monthOf(r))) }));
+    rows: ROWS.filter(r => catOf(r) === a.category && ms.has(monthOf(r))) }));
   row.appendChild(open);
   return row;
 }
@@ -1890,7 +2003,7 @@ const DEBITISH = /(체크|현금|머니|포인트|계좌|통장|이체)/;
 function cardMix() {
   const ms = MONTHS.length || 1;
   let credit = 0, debit = 0;
-  for (const r of D.rows) {
+  for (const r of ROWS) {
     const n = natOf(r);
     if (n !== FIXED && n !== VARIABLE) continue;
     (DEBITISH.test(r.m || '') ? (debit += r.a) : (credit += r.a));
@@ -2096,7 +2209,7 @@ function wireTax() {
 function refresh() {
   recompute();
   renderHome(); renderMonth(); renderList(); renderGoal(); renderAsset(); renderTax();
-  const dot = (D.rows.filter(r => catOf(r) === '미분류').length || SPIKES.length) ? '<span class="dot"></span>' : '';
+  const dot = (ROWS.filter(r => catOf(r) === '미분류').length || SPIKES.length) ? '<span class="dot"></span>' : '';
   document.getElementById('t-list').innerHTML = '내역' + dot;
 }
 
@@ -2122,7 +2235,8 @@ document.getElementById('moreGroups').addEventListener('click', () => {
   groupsShown += 12; renderList();
 });
 document.getElementById('resetEdits').addEventListener('click', () => {
-  mine.cat = {}; mine.once = {}; mine.name = {}; persist(); refresh();
+  mine.cat = {}; mine.once = {}; mine.name = {};
+  mine.pocket = {}; mine.add = []; persist(); refresh();
 });
 
 /* ═══════════════════════════════════════════════════════════
@@ -2183,7 +2297,7 @@ const dnum = s => Date.parse(s + 'T00:00:00');
 
 function applyPaste(items) {
   // 이름이 뭉뚱그려 찍힌 것부터 채운다. 이미 이름이 멀쩡한 건 건드리지 않는다.
-  const pool = D.rows.filter(r => VAGUE.test(r.c.trim()) || /페이|pay/i.test(r.m || ''));
+  const pool = ROWS.filter(r => VAGUE.test(r.c.trim()) || /페이|pay/i.test(r.m || ''));
   const used = new Set();
   let filled = 0, already = 0;
   const missed = [];
@@ -2203,6 +2317,23 @@ function applyPaste(items) {
   return { filled, already, missed, read: items.length };
 }
 
+/* 붙여넣은 줄로 새 거래를 만든다. 같은 줄을 두 번 넣어도 늘어나지 않게
+   날짜·금액·이름으로 식별자를 만든다. */
+function addRows(items, who) {
+  mine.add = mine.add || [];
+  const seen = new Set(mine.add.map(a => a.u));
+  let added = 0, dup = 0;
+  for (const it of items) {
+    const u = 'add|' + it.date + '|' + it.amount + '|' + it.name;
+    if (seen.has(u)) { dup++; continue; }
+    seen.add(u);
+    mine.add.push({ u, d: it.date, o: D.owners[0] || '나', c: it.name,
+                    a: it.amount, k: '미분류', t: '지출', m: who, r: 'paste' });
+    added++;
+  }
+  return { added, dup };
+}
+
 document.getElementById('pasteGo').addEventListener('click', () => {
   const box = document.getElementById('pasteResult');
   const text = document.getElementById('paste').value;
@@ -2213,6 +2344,20 @@ document.getElementById('pasteGo').addEventListener('click', () => {
       예: <code>2026-07-31 99,950 쿠팡</code></div>`;
     return;
   }
+  if (pasteMode === 'add') {
+    const who = (document.getElementById('pasteWho').value || '').trim() || '직접 넣음';
+    const res = addRows(items, who);
+    // 새로 넣은 거래는 분류가 비어 있으니, 이름으로 알 수 있는 것은 자동으로 잡는다
+    autoClassifyAdded();
+    persist(); refresh();
+    box.innerHTML = `<div class="warn" style="background:var(--good-bg)">
+      <b>${res.added}건</b>을 <b>${esc(who)}</b> 거래로 넣었습니다.
+      ${res.dup ? `${res.dup}건은 이미 넣은 것이라 건너뛰었습니다. ` : ''}
+      「내역」 탭에서 <b>직접 넣은 것</b>으로 걸러 보고 분류를 정해 주세요.<br>
+      <span class="note">카드값 납부는 이미 지출에서 빼 두었으니 이중으로 세지 않습니다.</span></div>`;
+    return;
+  }
+
   const res = applyPaste(items);
   persist(); refresh();
   box.innerHTML = `<div class="warn" style="background:var(--good-bg)">
@@ -2227,6 +2372,56 @@ document.getElementById('pasteGo').addEventListener('click', () => {
              <div class="a num">${won(m.amount)}</div>
              <div class="meta">${m.date}</div></div>`).join('') + '</details>' : '');
 });
+
+/* 직접 넣은 거래는 분류가 비어 있다. 이름만 보고 알 수 있는 건 자동으로 잡아
+   준다 — 파이썬 규칙을 전부 옮겨올 수는 없으니, 자주 나오는 말만 본다.
+   나머지는 미분류로 두고 화면에서 고르게 한다. */
+const QUICK = [
+  ['게임', /게임|넥슨|컴투스|스팀|steam|닌텐도|플레이스테이션|구글플레이|넷마블|라이엇|블리자드|한게임|문화상품권|컬쳐랜드/i],
+  ['배달', /배민|배달의민족|요기요|쿠팡이츠|땡겨요/i],
+  ['카페·간식', /카페|커피|스타벅스|투썸|이디야|메가|빽다방|컴포즈|폴바셋|베이커리|파리바게|던킨|공차/i],
+  ['식료품', /마트|슈퍼|편의점|GS25|CU |씨유|세븐일레븐|이마트|롯데마트|홈플러스|하나로|農協|농협하나로|청과|정육/i],
+  ['교통', /택시|버스|지하철|철도|코레일|주유|SK에너지|GS칼텍스|현대오일|쏘카|그린카|따릉이|킥보드|스윙|지바이크/i],
+  ['외식', /식당|국밥|고기|회|초밥|스시|파스타|피자|치킨|버거|맥도날드|롯데리아|맘스터치|김밥|분식|칼국수|냉면|족발|보쌈|막창|곱창/i],
+  ['의료·건강', /병원|의원|약국|치과|한의원|clinic/i],
+  ['반려동물', /동물병원|동물의료|동물메디컬|펫샵|애견/i],
+  ['쇼핑', /쿠팡|11번가|지마켓|G마켓|옥션|무신사|SSG|신세계|롯데백화점|현대백화점|올리브영|다이소/i],
+  ['문화·여가', /CGV|메가박스|롯데시네마|영화|서점|교보문고|예스24|알라딘|공연|전시|게임카페|보드게임|방탈출|PC방/i],
+];
+
+function autoClassifyAdded() {
+  for (const a of mine.add || []) {
+    if (a.k !== '미분류' || mine.cat[a.u]) continue;
+    for (const [cat, re] of QUICK) {
+      if (re.test(a.c)) { a.k = cat; break; }
+    }
+  }
+}
+
+/* 이름 채우기 / 거래 추가 */
+let pasteMode = 'fill';
+(function wirePasteMode() {
+  const box = document.getElementById('pasteMode');
+  const hint = document.getElementById('pasteModeHint');
+  const wrap = document.getElementById('pasteWhoWrap');
+  const draw = () => {
+    [...box.children].forEach(b =>
+      b.setAttribute('aria-pressed', b.dataset.mode === pasteMode ? 'true' : 'false'));
+    wrap.hidden = pasteMode !== 'add';
+    hint.innerHTML = pasteMode === 'fill'
+      ? '이미 있는 거래에 <b>진짜 가게 이름만</b> 붙입니다. 금액은 안 바뀝니다.'
+      : '<b>없던 거래를 새로 만듭니다.</b> 연동 안 된 카드 명세서를 넣을 때 쓰세요. '
+        + '이미 있는 거래를 여기 넣으면 두 번 세게 됩니다.';
+  };
+  [['fill','이름 채우기'], ['add','거래 추가']].forEach(([mode, label]) => {
+    const b = el('button','chip',label);
+    b.dataset.mode = mode;
+    b.addEventListener('click', () => { pasteMode = mode; draw();
+      document.getElementById('pasteResult').innerHTML = ''; });
+    box.appendChild(b);
+  });
+  draw();
+})();
 
 document.getElementById('pasteClear').addEventListener('click', () => {
   document.getElementById('paste').value = '';
@@ -2265,10 +2460,14 @@ document.getElementById('impFile').addEventListener('change', e => {
     try {
       const got = JSON.parse(rd.result);
       let n = 0;
-      ['cat','once','name'].forEach(k => {
+      ['cat','once','name','pocket'].forEach(k => {
         if (got[k]) { Object.assign(mine[k], got[k]); n += Object.keys(got[k]).length; }
       });
       if (got.tax) Object.assign(mine.tax, got.tax);
+      if (Array.isArray(got.add)) {
+        const have = new Set((mine.add || []).map(a => a.u));
+        got.add.forEach(a => { if (!have.has(a.u)) { mine.add.push(a); n++; } });
+      }
       persist(); refresh(); wireTax();
       setNote.textContent = `${n}건을 가져왔습니다.` +
         (got.saved ? ` (${got.saved.slice(0,10)}에 저장한 파일)` : '');
@@ -2287,7 +2486,7 @@ document.getElementById('impFile').addEventListener('change', e => {
   const csv = () => {
     const q = s => '"' + String(s).replace(/"/g, '""') + '"';
     const lines = ['날짜,사람,내용,금액,성격,카테고리,결제수단,원본타입,일회성,내가고침'];
-    for (const r of D.rows) lines.push([r.d, r.o, q(r.c), r.a, natOf(r), catOf(r),
+    for (const r of ROWS) lines.push([r.d, r.o, q(r.c), r.a, natOf(r), catOf(r),
       q(r.m), r.t, isOnce(r) ? 'Y' : '', mine.cat[r.u] ? 'Y' : ''].join(','));
     return lines.join('\n');
   };
@@ -2312,6 +2511,10 @@ document.getElementById('foot').innerHTML =
    페이 충전·대출 실행금을 걸러낸 숫자입니다. ${esc(D.owner)} 기준.
    고친 분류와 넣은 숫자는 이 폰에만 저장되고 어디로도 보내지 않습니다.`;
 
+/* 뱅샐이 '용돈'이라는 통장을 따로 두고 있으면 그게 용돈이 맞다. 처음 한 번만 켜 준다. */
+if (!mine.pocket || !Object.keys(mine.pocket).length) {
+  if (D.rows.some(r => r.m === '용돈')) { mine.pocket = { '용돈': 1 }; persist(); }
+}
 recompute();
 idx = MONTHS.length - 1;
 goalRate = Math.min(70, Math.max(10, Math.round(((BASE ? BASE.rate*100 : 30) + 10) / 5) * 5));

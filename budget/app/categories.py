@@ -40,6 +40,7 @@ CATEGORIES = {
     '의료·건강': VARIABLE,
     '반려동물': VARIABLE,     # 병원비가 커서 사람 의료비에 섞이면 둘 다 안 보인다
     '문화·여가': VARIABLE,
+    '게임': VARIABLE,         # 문화·여가에 묻으면 얼마 쓰는지 안 보인다
     '쇼핑': VARIABLE,
     '경조·선물': VARIABLE,
     '여행·숙박': VARIABLE,
