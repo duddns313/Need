@@ -100,6 +100,8 @@ h1 { font-size:20px; font-weight:750; letter-spacing:-.02em; margin:18px 0 3px; 
 .badge.watch { background:var(--watch-bg); color:var(--watch); }
 .badge.act { background:var(--act-bg); color:var(--act); }
 .check .lab { font-size:13.5px; font-weight:650; }
+.check .stepno { display:grid; place-items:center; width:23px; height:23px; border-radius:50%;
+  background:var(--ink); color:var(--surface); font-size:12.5px; font-weight:700; }
 .check .note { font-size:12.5px; color:var(--ink-2); margin-top:3px; }
 .check .tgt { font-size:12px; color:var(--muted); margin-top:2px; }
 .check .val { font-size:17px; font-weight:750; letter-spacing:-.02em; }
@@ -109,6 +111,7 @@ h1 { font-size:20px; font-weight:750; letter-spacing:-.02em; margin:18px 0 3px; 
 .bar-row .nm { color:var(--ink-2); text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .bar { height:15px; border-radius:0 5px 5px 0; min-width:3px; }
 .bar-row .vl { font-size:12px; white-space:nowrap; }
+.bar-row .dl { font-size:10.5px; margin-left:5px; font-weight:600; }
 
 .split { display:flex; height:26px; border-radius:8px; overflow:hidden; margin-bottom:10px; }
 .split i { display:block; }
@@ -299,6 +302,7 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
 
     <div class="card">
       <h2>이 달 쓴 돈</h2>
+      <p class="sub" id="mPartial" hidden></p>
       <div class="fig num" id="mSpend" style="color:var(--spend)"></div>
       <p class="note" id="mDelta"></p>
       <div class="trio">
@@ -324,6 +328,7 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
       <h2>항목별</h2>
       <p class="hintline">막대를 누르면 그 항목에 든 거래를 전부 볼 수 있습니다.</p>
       <div class="bars" id="expBars"></div>
+      <p class="note" id="expNote" style="margin:12px 0 0"></p>
     </div>
 
     <div class="card">
@@ -750,7 +755,23 @@ const counted = r => natOf(r) !== EXCLUDED;
    진단도 처방도 같이 움직인다. 안 그러면 고쳐 봐야 화면이 안 변한다.
    ═══════════════════════════════════════════════════════════ */
 const REAL = 300_000;      // 이보다 적은 달은 내보내기 경계에 잘린 조각이다
-let PER, MONTHS, BASE, HEALTH, ACTS, LEAKS, SPIKES, GROUPS, EXCL, EXCL_IN;
+let PER, MONTHS, BASE, HEALTH, ACTS, LEAKS, SPIKES, GROUPS, EXCL, EXCL_IN, PARTIAL;
+
+/* ── 아직 안 끝난 달.
+   파일을 달 중간에 내보내면 마지막 달은 반쪽짜리다. 그걸 온전한 달로 세면
+   세 군데가 한꺼번에 거짓말을 한다 — 가운뎃값이 아래로 끌려가고, 흐름
+   그래프에 없던 골짜기가 생기고, '지난달보다 덜 썼습니다'라고 칭찬까지 한다.
+   파일에 담긴 마지막 날(D.range[1]) 뒤로는 자료가 없을 뿐이니 그렇게 읽는다. */
+function partialMonth() {
+  const last = MONTHS[MONTHS.length - 1], asOf = D.range[1];
+  if (!last || asOf.slice(0, 7) !== last) return null;
+  const inMonth = new Date(+last.slice(0, 4), +last.slice(5, 7), 0).getDate();
+  const have = +asOf.slice(8);
+  return have < inMonth ? { m: last, have, days: inMonth } : null;
+}
+const isPartial = m => !!(PARTIAL && PARTIAL.m === m);
+/* 온전한 달만. 평소 한 달을 재는 자리에는 반쪽짜리를 넣지 않는다. */
+const wholeMonths = () => MONTHS.filter(m => !isPartial(m));
 
 function recompute() {
   rebuildRows();
@@ -780,6 +801,7 @@ function recompute() {
   const all = Object.keys(PER).sort();
   MONTHS = all.filter(m => { const p = PER[m]; return p.income + p.fixed + p.variable >= REAL; });
   if (!MONTHS.length) MONTHS = all;
+  PARTIAL = partialMonth();
 
   EXCL = {}; EXCL_IN = {};
   for (const m of all) {
@@ -818,7 +840,7 @@ const spent = t => t.fixed + t.variable;
 /* ── 평소 한 달. 평균이 아니라 가운뎃값이다.
       평균은 이사나 대출 같은 한 달짜리 사건에 통째로 끌려간다. */
 const RECENT = 6, GOOD_MONTHS = 3, MIN_MONTHS = 3;
-const recentMonths = () => MONTHS.slice(-RECENT);
+const recentMonths = () => wholeMonths().slice(-RECENT);
 
 function baseline() {
   const ms = recentMonths();
@@ -848,6 +870,17 @@ function foodAll() {
   const eatout = total - (parts[D.food_keys[0]] || 0);
   return { parts, total, eatout, ratio: total ? eatout/total : 0 };
 }
+
+/* 손대는 순서. 재무 상담의 순서 그대로다.
+   ① 정체 모를 지출 — 이게 크면 아래 숫자를 전부 못 믿는다. 자료부터 맞춘다.
+   ② 비상금 — 없으면 사고 한 번에 카드빚으로 돌아간다. 사다리 첫 칸.
+   ③ 저축률 — 그 다음이 얼마나 남기느냐.
+   ④ 사먹는 비중 ⑤ 고정비 — 저축률을 올리는 구체적인 손잡이.
+   ⑥ 들쭉날쭉 — 예산을 세울 수 있느냐. 급하진 않다. */
+const URGENCY = ['unknown','emergency','saving','eatout','fixed','swing'];
+const byUrgency = (a, b) =>
+  (a.verdict === b.verdict ? 0 : a.verdict === 'act' ? -1 : 1) ||
+  URGENCY.indexOf(a.key) - URGENCY.indexOf(b.key);
 
 function health() {
   if (MONTHS.length < MIN_MONTHS || !BASE) return [];
@@ -880,7 +913,7 @@ function health() {
     note:`먹는 데 쓴 돈 중 외식·배달·카페가 ${(fd.ratio*100).toFixed(0)}%, 장보기가 ${((1-fd.ratio)*100).toFixed(0)}%입니다.`,
     target:'장보기 비중이 높을수록 같은 끼니를 덜 쓰고 먹습니다.' });
 
-  const sp = MONTHS.map(m => PER[m].fixed + PER[m].variable), md = median(sp);
+  const sp = wholeMonths().map(m => PER[m].fixed + PER[m].variable), md = median(sp);
   if (sp.length >= MIN_MONTHS && md) {
     const swing = (Math.max(...sp) - Math.min(...sp)) / md;
     out.push({ key:'swing', label:'월별 들쭉날쭉', display:swing.toFixed(1)+'배',
@@ -1032,8 +1065,36 @@ function drawWideBars(node, cats, color, onDrill) {
   });
 }
 
-/* onDrill 을 주면 막대가 눌리는 막대가 된다. */
-function drawBars(node, cats, color, onDrill) {
+/* ── 지난달과 견준 표시.
+   '배달 33만'만 봐서는 손을 댈지 말지 알 수 없다. 늘었는지 줄었는지가
+   행동을 바꾼다. 다만 열일곱 줄에 전부 붙이면 그게 다시 소음이 되므로,
+   실제로 움직인 것(1만원 이상 그리고 15% 이상)에만 붙인다.
+   화살표가 뜻을 지고 색은 거들기만 한다 — 색만으로는 안 읽히는 사람이 있다. */
+const DELTA_MIN = 10_000, DELTA_RATIO = .15;
+
+/* 늘어난 게 나쁜 항목만 빨갛게 칠한다.
+   이 앱은 「목표」 탭에서 의료비·장보기·문화여가는 <b>줄일 항목이 아니라고</b>
+   말해 놓았다. 그래 놓고 그게 늘었다고 빨갛게 칠하면 앞뒤가 안 맞는다.
+   줄이라고 안내하는 항목만 빨강·초록으로 판정하고, 나머지는 방향만
+   화살표로 알려주고 판정은 안 한다. */
+const CUTTABLE = new Set(['배달','외식','카페·간식','쇼핑','생활용품','교통',
+                          '여행·숙박','자동차','게임','구독료']);
+function deltaTag(now, was, mode) {
+  if (was == null) return '';
+  const d = now - was;
+  if (Math.abs(d) < DELTA_MIN) return '';
+  if (was > 0 && Math.abs(d) / was < DELTA_RATIO) return '';
+  const color = mode === 'flat' ? 'var(--muted)'
+    : (mode === 'gain' ? d > 0 : d < 0) ? 'var(--good)' : 'var(--act)';
+  return `<span class="dl" style="color:${color}">${d > 0 ? '▲' : '▼'}${man(Math.abs(d))}</span>`;
+}
+
+/* onDrill 을 주면 막대가 눌리는 막대가 된다.
+   prev 를 주면 지난달 대비 증감을 같이 보여준다.
+   judge: 'cut'  줄이라고 안내하는 항목만 판정 (지출)
+          'gain' 늘어난 게 좋다 (수입·저축)
+          'flat' 판정 안 함 */
+function drawBars(node, cats, color, onDrill, prev, judge = 'cut') {
   node.innerHTML = '';
   const rows = Object.entries(cats).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]);
   if (!rows.length) { node.appendChild(el('p','note','없습니다.')); return; }
@@ -1042,7 +1103,8 @@ function drawBars(node, cats, color, onDrill) {
     const row = el(onDrill ? 'button' : 'div', 'bar-row' + (onDrill ? ' drill' : ''),
       `<div class="nm">${esc(n)}</div>
        <div><div class="bar" style="width:${Math.max(v/max*100,2)}%;background:${color}"></div></div>
-       <div class="vl num">${man(v)}</div>`);
+       <div class="vl num">${man(v)}${prev ? deltaTag(v, prev[n] || 0,
+          judge === 'cut' ? (CUTTABLE.has(n) ? 'spend' : 'flat') : judge) : ''}</div>`);
     if (onDrill) {
       row.type = 'button';
       row.style.cssText = 'border:0;background:transparent;padding:0;font:inherit;text-align:inherit;width:100%';
@@ -1238,7 +1300,7 @@ function renderHome() {
 
   const todo = document.getElementById('todo');
   todo.innerHTML = '';
-  const worry = HEALTH.filter(h => h.verdict !== 'good');
+  const worry = HEALTH.filter(h => h.verdict !== 'good').sort(byUrgency);
   if (!worry.length) { todo.appendChild(el('p','note','진단에서 걸린 것이 없습니다. 지금 흐름을 유지하세요.')); return; }
   const TIP = {
     emergency: '「자산」 탭을 보세요. 아끼는 것보다 <b>순서</b>가 먼저입니다 — 비상금 없이 투자부터 하면 사고 한 번에 원점입니다.',
@@ -1248,10 +1310,28 @@ function renderHome() {
     swing: '큰 거래가 섞여 있을 수 있습니다. 「내역」 탭에서 <b>큰 거래</b>만 골라 일회성을 표시하세요.',
     unknown: '「내역」 탭에서 <b>미분류</b>만 골라 분류를 정해 주세요. 같은 이름은 한 번에 바뀝니다.',
   };
-  worry.forEach(h => todo.appendChild(el('div','check',
-    `<span class="badge ${h.verdict}">${VERDICT[h.verdict]}</span>
-     <div><div class="lab">${h.label} ${h.display}</div>
-       <div class="note">${TIP[h.key] || ''}</div></div><div></div>`)));
+  /* 다섯 개가 한꺼번에 빨갛게 서 있으면 어디부터 손댈지 알 수가 없다.
+     전부 급하면 아무것도 안 급한 것과 같다. 순서를 매겨 세 개만 내놓고,
+     나머지는 접어 둔다. */
+  const step = (h, i) => el('div','check',
+    `<span class="stepno">${i+1}</span>
+     <div><div class="lab">${h.label} ${h.display}
+        <span class="badge ${h.verdict}" style="margin-left:6px">${VERDICT[h.verdict]}</span></div>
+       <div class="note">${TIP[h.key] || ''}</div></div><div></div>`);
+  const FIRST = 3;
+  worry.slice(0, FIRST).forEach((h,i) => todo.appendChild(step(h,i)));
+  if (worry.length > FIRST) {
+    const rest = el('div','', '');
+    rest.hidden = true;
+    worry.slice(FIRST).forEach((h,i) => rest.appendChild(step(h, i+FIRST)));
+    const btn = el('button','chip',`나머지 ${worry.length-FIRST}개 보기`);
+    btn.style.cssText = 'width:100%; margin-top:10px';
+    btn.addEventListener('click', () => {
+      rest.hidden = !rest.hidden;
+      btn.textContent = rest.hidden ? `나머지 ${worry.length-FIRST}개 보기` : '접기';
+    });
+    todo.appendChild(rest); todo.appendChild(btn);
+  }
 }
 
 /* ─────────────────────────────── 소비 */
@@ -1273,10 +1353,20 @@ function renderMonth() {
   const rate = t.income ? (t.income - spent(t)) / t.income : 0;
   document.getElementById('mRate').textContent = (rate*100).toFixed(0) + '%';
 
+  /* 반쪽짜리 달을 지난달과 그냥 견주면 '덜 썼다'는 칭찬이 나간다.
+     아직 안 끝난 달이라는 것부터 말하고, 이 속도면 월말에 얼마인지 보여준다. */
+  const part = isPartial(m) ? PARTIAL : null;
+  const pn = document.getElementById('mPartial');
+  pn.hidden = !part;
+  if (part) pn.innerHTML = `아직 안 끝난 달입니다 — <b>${part.have}일까지</b>의 기록입니다
+    (${part.days}일 중). 이 속도면 월말에 <b>${won(spent(t) / part.have * part.days)}</b> 안팎입니다.`;
+
   if (prev) {
-    const d = spent(t) - spent(prev);
+    const pace = part ? spent(t) / part.have * part.days : spent(t);
+    const d = pace - spent(prev);
     document.getElementById('mDelta').innerHTML = d === 0 ? '지난달과 같습니다'
-      : `지난달보다 <b style="color:${d<0?'var(--good)':'var(--act)'}">${man(Math.abs(d))} ${d<0?'덜':'더'}</b> 썼습니다`;
+      : `지난달보다 <b style="color:${d<0?'var(--good)':'var(--act)'}">${man(Math.abs(d))} ${d<0?'덜':'더'}</b> ${
+          part ? '쓸 속도입니다' : '썼습니다'}`;
   } else document.getElementById('mDelta').textContent = '';
 
   const onceHere = PER[m].once;
@@ -1301,10 +1391,16 @@ function renderMonth() {
     title: k, scope: `${m.slice(0,4)}년 ${+m.slice(5)}월`,
     rows: pick(r => catOf(r) === k, m) });
 
-  drawBars(document.getElementById('foodBars'), F, 'var(--spend)', intoCat);
-  drawBars(document.getElementById('expBars'), t.exp_cat, 'var(--spend)', intoCat);
-  drawBars(document.getElementById('incBars'), t.inc_cat, 'var(--income)', intoCat);
-  drawBars(document.getElementById('savBars'), t.sav_cat, 'var(--save)', intoCat);
+  /* 반쪽짜리 달은 지난달과 견줄 수 없다 — 무조건 줄어 보인다. */
+  const cmp = prev && !part ? prev : null;
+  drawBars(document.getElementById('foodBars'), F, 'var(--spend)', intoCat, cmp && cmp.food);
+  drawBars(document.getElementById('expBars'), t.exp_cat, 'var(--spend)', intoCat, cmp && cmp.exp_cat);
+  drawBars(document.getElementById('incBars'), t.inc_cat, 'var(--income)', intoCat, cmp && cmp.inc_cat, 'gain');
+  drawBars(document.getElementById('savBars'), t.sav_cat, 'var(--save)', intoCat, cmp && cmp.sav_cat, 'gain');
+  document.getElementById('expNote').innerHTML = cmp
+    ? `오른쪽 화살표는 지난달과 견준 것입니다. 크게 움직인 항목에만 붙습니다.
+       색이 붙은 것은 <b>줄이자고 안내하는 항목</b>이고, 회색은 의료비·장보기처럼
+       늘었다고 나쁘다고 할 수 없는 항목입니다.` : '';
   drawPay(m);
   drawReconcile();
   drawTrend();
@@ -1399,11 +1495,19 @@ function drawTrend() {
           <text class="tk" x="${ml-7}" y="${yy+3.5}" text-anchor="end">${man(v)}</text>`; }
   rows.forEach((r,i) => { if (rows.length > 8 && i % 2) return;
     s += `<text class="tk" x="${x(i)}" y="${H-8}" text-anchor="middle">${+r.m.slice(5)}월</text>`; });
+  /* 반쪽짜리 마지막 달은 실선으로 이으면 없던 골짜기가 생긴다. 그 구간만
+     점선으로 끊고 동그라미를 비워 '아직 안 끝났다'가 눈에 보이게 한다. */
+  const half = rows.length > 1 && isPartial(rows[rows.length-1].m);
+  const solid = half ? rows.slice(0, -1) : rows;
   [['income','var(--income)'],['spend','var(--spend)'],['saving','var(--save)']].forEach(([k,c]) => {
-    s += `<path class="ln" stroke="${c}" d="${rows.map((r,i)=>`${i?'L':'M'}${x(i)},${y(r[k])}`).join(' ')}"/>`;
+    s += `<path class="ln" stroke="${c}" d="${solid.map((r,i)=>`${i?'L':'M'}${x(i)},${y(r[k])}`).join(' ')}"/>`;
     const l = rows.length-1;
-    s += `<circle cx="${x(l)}" cy="${y(rows[l][k])}" r="4" fill="${c}" stroke="var(--surface)" stroke-width="2"/>`;
+    if (half) s += `<path class="ln" stroke="${c}" stroke-dasharray="4 4"
+      d="M${x(l-1)},${y(rows[l-1][k])} L${x(l)},${y(rows[l][k])}"/>`;
+    s += `<circle cx="${x(l)}" cy="${y(rows[l][k])}" r="4"
+      fill="${half ? 'var(--surface)' : c}" stroke="${half ? c : 'var(--surface)'}" stroke-width="2"/>`;
   });
+  if (half) s += `<text class="tk" x="${x(rows.length-1)}" y="${mt+8}" text-anchor="end">아직 안 끝난 달</text>`;
   document.getElementById('trend').innerHTML = s + '</svg>';
   let t = '<table><thead><tr><th>월</th><th>번 돈</th><th>쓴 돈</th><th>저축</th></tr></thead><tbody>';
   rows.forEach(r => t += `<tr><td>${r.m}</td><td class="num">${won(r.income)}</td>
