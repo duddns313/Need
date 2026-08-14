@@ -129,14 +129,19 @@ def rows_of(txs) -> list[dict]:
     폰으로 받는 파일이라 글자 수가 곧 무게다. 키를 한 글자로 줄인다.
       u 식별자 · d 날짜 · o 사람 · c 내용 · a 금액 · k 카테고리
       t 뱅샐 원본 타입 · m 결제수단 · r 어떤 규칙으로 분류됐는지
+      h 몇 시 — 동네 가게는 이름만으론 알 수가 없다. 낮 열두 시에 만이천원이면
+        점심이다. 분·초까지는 필요 없어서 시(時)만 보낸다.
     """
     out = []
     for tx in sorted(txs, key=lambda t: (t.date, t.time)):
-        out.append({
+        row = {
             'u': tx.uid, 'd': tx.date.isoformat(), 'o': tx.owner,
             'c': tx.content, 'a': tx.amount, 'k': tx.category,
             't': tx.bs_type, 'm': tx.method, 'r': tx.rule,
-        })
+        }
+        if tx.time and tx.time[:2].isdigit():
+            row['h'] = int(tx.time[:2])
+        out.append(row)
     return out
 
 

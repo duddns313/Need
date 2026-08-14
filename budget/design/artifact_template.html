@@ -391,6 +391,20 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
       <button class="chip" id="moreReview" style="width:100%; margin-top:6px" hidden></button>
     </div>
 
+    <div class="card" id="guessCard" hidden>
+      <h2>이건 아마 이것</h2>
+      <p class="sub">동네 가게는 이름만으로는 무엇인지 알 수가 없습니다. 그래서
+        <b>몇 시에 얼마를 어느 카드로</b> 썼는지를 보고 짐작했습니다.
+        낮 열두 시에 카드로 만이천원이면 점심입니다.<br>
+        <b>짐작이지 확인이 아닙니다.</b> 근거를 같이 적어 뒀으니 맞으면 누르고,
+        아니면 옆에서 다른 항목을 고르세요.</p>
+      <p class="note" id="guessSum" style="margin:0 0 12px"></p>
+      <button class="chip" id="guessAll" style="width:100%; margin-bottom:12px">전부 맞아요 — 한 번에 정하기</button>
+      <p class="note" id="guessNote" style="margin:0 0 12px"></p>
+      <div id="guessList"></div>
+      <button class="chip" id="moreGuess" style="width:100%; margin-top:6px" hidden></button>
+    </div>
+
     <div class="card">
       <h2>무엇을 볼까</h2>
       <div class="chiprow" id="filters"></div>
@@ -1649,6 +1663,109 @@ function reviewItems() {
   }).sort((a,b) => b.amount - a.amount);
 }
 
+/* ── 이건 아마 이것.
+   미분류로 남은 것은 대부분 동네 가게라 이름만으로는 알 길이 없다. 인터넷을
+   뒤져도 안 나온다. 그런데 가계부에는 이름 말고도 단서가 있다 — 몇 시에
+   얼마를 어느 카드로 썼는가. 낮 열두 시에 카드로 만이천원이면 점심이다.
+
+   확신이 아니므로 몰래 정하지 않는다. 근거를 같이 적어 두고, 맞으면 한 번
+   눌러 확정하고 아니면 다른 걸 고르게 한다. 이 방식이 이름 마흔 개를 규칙에
+   박아 넣는 것보다 낫다 — 다음 달에 처음 보는 가게가 와도 똑같이 걸린다. */
+const GUESS_MAX = 100_000;   // 이보다 크면 끼니로 보기 어렵다. 짐작하지 않는다
+const MEAL_MIN = 5_000;      // 이보다 적으면 끼니보다 군것질 쪽이다
+/* 통장인지 카드인지는 이름으로 못 가린다 — 'BC 바로 K-패스'에는 '카드'라는
+   말이 없다. 뱅샐이 준 자산 목록에 있는 이름이면 통장, 없으면 카드로 본다. */
+const ACCOUNTS = new Set((D.asset_lines || []).map(a => a.name));
+function guessOf(r) {
+  if (catOf(r) !== '미분류' || r.t === '수입') return null;
+  /* 결제대행사와 가려진 가게 이름은 애초에 '무엇인지 모른다'고 표시해 둔
+     것들이다. 거기다 대고 시간만 보고 점심이라 하면 모르는 걸 아는 척하는
+     셈이다. 짐작하지 않고 「확인해 주세요」에 그대로 남겨 둔다. */
+  if (r.r === 'pg:가게이름-대신-대행사' || r.r === 'pay:가게이름-가려짐') return null;
+  const h = r.h, m = r.m || '';
+  if (/배민|배달의민족|요기요|쿠팡이츠|땡겨요/.test(m))
+    return { cat:'배달', why:`${esc(josa(m, '으로', '로'))} 결제했습니다` };
+  const bare = r.c.split('(')[0].trim();
+  if (ACCOUNTS.has(m) && /^[가-힣][가-힣*]{1,3}$/.test(bare))
+    return { cat:'개인송금', why:`카드가 아니라 「${esc(m)}」에서 사람 이름으로 나갔습니다` };
+  if (h == null || r.a > GUESS_MAX || ACCOUNTS.has(m)) return null;
+  if (r.a >= MEAL_MIN && h >= 11 && h <= 14)
+    return { cat:'외식', why:`${h}시 · ${won(r.a)} — 점심 같습니다` };
+  if (r.a >= MEAL_MIN && h >= 17 && h <= 21)
+    return { cat:'외식', why:`${h}시 · ${won(r.a)} — 저녁 같습니다` };
+  if (r.a <= 15_000 && h >= 6 && h <= 21)
+    return { cat:'카페·간식', why:`${h}시 · ${won(r.a)} — 커피·간식 같습니다` };
+  return null;
+}
+
+/* 같은 이름은 한 덩어리로 묶어 한 번에 정한다. */
+function guessGroups() {
+  const g = {};
+  for (const r of ROWS) {
+    const hit = guessOf(r);
+    if (!hit) continue;
+    const n = nameOf(r), e = g[n] || (g[n] = {
+      content:n, cat:hit.cat, why:hit.why, count:0, amount:0, rows:[] });
+    e.count++; e.amount += r.a; e.rows.push(r);
+    if (e.cat !== hit.cat) e.cat = null;      // 한 이름에 점심·저녁이 섞이면 못 정한다
+  }
+  return Object.values(g).filter(e => e.cat).sort((a,b) => b.amount - a.amount);
+}
+
+let guessShown = 8;
+function renderGuess() {
+  const items = guessGroups();
+  const card = document.getElementById('guessCard');
+  card.hidden = !items.length;
+  if (!items.length) return;
+  const box = document.getElementById('guessList');
+  box.innerHTML = '';
+  const sum = items.reduce((s,e) => s + e.amount, 0);
+  document.getElementById('guessSum').innerHTML =
+    `<b>${items.length}곳 · ${won(sum)}</b>을 짐작해 봤습니다. 맞으면 누르세요.`;
+  items.slice(0, guessShown).forEach(e => {
+    const item = el('div','item',
+      `<div class="top"><span class="nm2">${esc(e.content)}</span>
+         <span class="amt num">${won(e.amount)}</span></div>
+       <div class="why">${e.why}</div>
+       <div class="when">${e.count}건 · ${e.rows[0].d} ~ ${e.rows[e.rows.length-1].d}</div>`);
+    if (e.count > 1) {
+      const open = el('button','chip','거래 ' + e.count + '건 보기');
+      open.style.cssText = 'width:100%; margin-top:10px; min-height:40px; font-size:13px';
+      open.addEventListener('click', () => openDetail({
+        title: e.content, scope:'전체 기간', rows: e.rows, byName:false }));
+      item.appendChild(open);
+    }
+    const acts = el('div','rowacts');
+    const set = v => { e.rows.forEach(r => {
+      if (v === r.k) delete mine.cat[r.u]; else mine.cat[r.u] = v; });
+      persist(); refresh(); };
+    const yes = el('button','mark',`${e.cat} 맞아요`);
+    yes.addEventListener('click', () => set(e.cat));
+    acts.appendChild(yes);
+    acts.appendChild(catSelect('미분류', set));
+    item.appendChild(acts);
+    box.appendChild(item);
+  });
+  const more = document.getElementById('moreGuess');
+  const left = items.length - guessShown;
+  more.hidden = left <= 0;
+  more.textContent = `${left}곳 더 보기`;
+}
+document.getElementById('moreGuess').addEventListener('click', () => {
+  guessShown += 12; renderGuess();
+});
+/* 한 번에 다 받기. 마흔 곳을 한 곳씩 누르게 하면 아무도 안 한다. */
+document.getElementById('guessAll').addEventListener('click', () => {
+  const items = guessGroups();
+  if (!items.length) return;
+  items.forEach(e => e.rows.forEach(r => {
+    if (e.cat === r.k) delete mine.cat[r.u]; else mine.cat[r.u] = e.cat; }));
+  persist(); refresh();
+  document.getElementById('guessNote').textContent =
+    `${items.length}곳을 정했습니다. 틀린 게 있으면 아래 목록에서 바꾸세요.`;
+});
+
 let reviewShown = 6;
 function renderReview() {
   const items = reviewItems();
@@ -1696,6 +1813,7 @@ document.getElementById('moreReview').addEventListener('click', () => {
 function renderList() {
   SPIKE_SET = new Set(SPIKES.map(s => s.u));
   renderReview();
+  renderGuess();
   renderFilters();
   const rows = currentRows();
   document.getElementById('listCount').textContent =

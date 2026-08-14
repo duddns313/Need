@@ -150,6 +150,11 @@ class Classifier:
             return self._own_or_person(content, 'fallback:transfer')
         return '미분류', 'fallback'
 
+    def _is_pg(self, content: str) -> bool:
+        """결제를 대신 받아 주는 회사(PG)인가 — 가게가 아니라 통로다."""
+        name = content.replace('(주)', '').replace('㈜', '').replace('주식회사', '').strip()
+        return any(name == p for p in self.rules.get('pg_names', []))
+
     def _own_or_person(self, content: str, why: str) -> tuple[str, str]:
         """'내계좌이체'라고 부르기 직전에, 정말 내 계좌인지 한 번 본다.
 
@@ -157,7 +162,14 @@ class Classifier:
         전부 몰아넣는다. 여기에는 내 계좌 사이를 옮긴 것도 있지만 남에게 부친
         돈도 섞여 있다. 그대로 두면 '안 쓴 돈'이 되어 저축률이 부풀려진다.
         실제 파일에서 그렇게 594만원이 사라져 있었다.
+
+        결제대행사(PG)도 여기로 떨어진다. 네이버파이낸셜로 나간 돈은 은행
+        통로를 탔을 뿐 실제로는 무언가를 산 것이다. 이체로 묻으면 안 쓴 돈이
+        되고, 그렇다고 가게 이름을 아는 것도 아니니 미분류로 올려 둔다.
+        (뱅샐이 '온라인쇼핑'처럼 쓸 만한 분류를 준 건은 여기까지 안 온다.)
         """
+        if self._is_pg(content):
+            return '미분류', 'pg:가게이름-대신-대행사'
         kind, tag = self._person_transfer(content)
         return (kind, tag) if kind else ('내계좌이체', why)
 
