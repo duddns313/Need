@@ -11,6 +11,7 @@ import re
 import secrets
 import threading
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from difflib import SequenceMatcher
 from pathlib import Path
 from urllib.parse import quote
@@ -41,6 +42,7 @@ STATUS_META = {
 }
 
 _UNSAFE = re.compile('[<>:"/\\\\|?*\\x00-\\x1f]')
+_LAW_LOOKUP_WORKERS = 4
 
 
 def safe_name(raw, fallback_idx=0):
@@ -310,80 +312,107 @@ def _run_analysis(sid, mode, c):
         internal_text = '\n\n'.join(t for _, t in internal_docs)
         internal_filenames = [fn for fn, _ in internal_docs]
         client = LawClient(c['oc'])
-        job['total'] = len(refs)
-        job['phase'] = '법령정보센터 최신본 조회 및 대조 중'
-        rows = []
-        for i, ref in enumerate(refs, 1):
-            job['done'] = i
-            _note(sid, f'[{i}/{len(refs)}] {ref.name}')
-            row = {'reference': ref.to_dict()}
+
+        # 같은 법령명이 여러 카드 행에 중복 등장하는 경우가 많아서, 이름별로 한 번만
+        # 조회하고(중복 제거) 그 조회들을 동시에 몇 개씩 병렬로 돌립니다.
+        unique_names = list(dict.fromkeys(ref.name for ref in refs))
+        job['total'] = len(unique_names)
+        job['phase'] = f'법령정보센터 조회 중 (중복 제거 후 {len(unique_names)}건)'
+        lookup_cache = {}
+        progress_lock = threading.Lock()
+        done = 0
+
+        def _lookup(name):
             try:
-                rec = client.best_match(ref.name)
-                if rec is None:
-                    search_url = f'https://www.law.go.kr/LSW/lsSc.do?menuId=1&query={quote(ref.name)}'
-                    row.update(
-                        status='notfound',
-                        headline='법령정보센터에서 찾지 못함',
-                        detail=f"'{ref.name}' 명칭으로 법령·행정규칙 모두 조회했으나 결과가 없습니다. 명칭이 바뀌었거나 사내 전용 기준일 수 있습니다.",
-                        action='아래 링크로 직접 검색해 명칭이 바뀌었는지 확인해주세요.',
-                        record=None, changed=False, internal_matches=[], search_url=search_url,
-                    )
-                    rows.append(row)
-                    continue
-
-                snap = storage.compare_with_snapshot(rec)
-                pending = []
-                if rec.target == 'law':
-                    try:
-                        pending = [p.to_dict() for p in client.pending(ref.name)]
-                    except LawApiError:
-                        pending = []
-
-                if mode == 'ai' and c.get('api_key'):
-                    verdict = compare_ai(rec, ref, internal_text, c['api_key'], c.get('model', DEFAULT_MODEL))
-                else:
-                    verdict = evaluate(rec, ref, pending)
-                storage.write_snapshot(rec)
-
-                internal_matches = [
-                    {'name': name, 'file': _uploaded_internal_match(name, internal_filenames)}
-                    for name in ref.related_internal
-                ]
-                row.update(
-                    record=rec.to_dict(),
-                    changed=snap['changed'],
-                    previous=snap['previous'],
-                    status=verdict.get('status', 'review'),
-                    headline=verdict.get('headline', ''),
-                    detail=verdict.get('detail', ''),
-                    action=verdict.get('action', ''),
-                    internal_matches=internal_matches,
-                    pending=pending,
-                )
-                if snap['changed'] and row['status'] == 'ok':
-                    row['status'] = 'review'
-                    row['headline'] = '직전 확인 이후 개정 발생'
-                if row['status'] == 'outdated' and ref.related_internal and not any(m['file'] for m in internal_matches):
-                    row['status'] = 'missing'
-                    row['headline'] = '관련 내규 파일이 업로드되지 않음'
-                    row['detail'] = f"카드에 기재된 관련 내규({', '.join(ref.related_internal)})가 업로드된 파일 중에 없습니다."
-                    row['action'] = '해당 내규 파일을 올리고 다시 분석해주세요.'
-                if row['status'] in ('review', 'outdated'):
-                    matched_file = next((m['file'] for m in internal_matches if m['file']), None)
-                    if matched_file:
-                        doc_text = next((t for fn, t in internal_docs if fn == matched_file), '')
-                        excerpt = relevant_excerpt(doc_text, ref.name, window=900)
-                        if excerpt:
-                            row['internal_excerpt'] = {'file': matched_file, 'text': excerpt[:2000]}
-                rows.append(row)
+                rec = client.best_match(name)
             except LawApiError as e:
+                return name, {'error': str(e)}
+            if rec is None:
+                return name, {'rec': None}
+            snap = storage.compare_with_snapshot(rec)
+            pending = []
+            if rec.target == 'law':
+                try:
+                    pending = [p.to_dict() for p in client.pending(name)]
+                except LawApiError:
+                    pending = []
+            storage.write_snapshot(rec)
+            return name, {'rec': rec, 'snap': snap, 'pending': pending}
+
+        with ThreadPoolExecutor(max_workers=_LAW_LOOKUP_WORKERS) as pool:
+            futures = [pool.submit(_lookup, name) for name in unique_names]
+            for fut in as_completed(futures):
+                name, result = fut.result()
+                lookup_cache[name] = result
+                with progress_lock:
+                    done += 1
+                    job['done'] = done
+                _note(sid, f'[{done}/{len(unique_names)}] {name}')
+
+        job['phase'] = '항목별 대조 정리 중'
+        rows = []
+        for ref in refs:
+            row = {'reference': ref.to_dict()}
+            cached = lookup_cache.get(ref.name, {})
+            if 'error' in cached:
                 row.update(
-                    status='notfound', headline='조회 실패', detail=str(e),
+                    status='notfound', headline='조회 실패', detail=cached['error'],
                     action='OC키 승인 상태를 확인해주세요.',
                     record=None, changed=False, internal_matches=[],
                 )
                 rows.append(row)
                 continue
+            rec = cached.get('rec')
+            if rec is None:
+                search_url = f'https://www.law.go.kr/LSW/lsSc.do?menuId=1&query={quote(ref.name)}'
+                row.update(
+                    status='notfound',
+                    headline='법령정보센터에서 찾지 못함',
+                    detail=f"'{ref.name}' 명칭으로 법령·행정규칙 모두 조회했으나 결과가 없습니다. 명칭이 바뀌었거나 사내 전용 기준일 수 있습니다.",
+                    action='아래 링크로 직접 검색해 명칭이 바뀌었는지 확인해주세요.',
+                    record=None, changed=False, internal_matches=[], search_url=search_url,
+                )
+                rows.append(row)
+                continue
+
+            snap = cached['snap']
+            pending = cached['pending']
+            if mode == 'ai' and c.get('api_key'):
+                verdict = compare_ai(rec, ref, internal_text, c['api_key'], c.get('model', DEFAULT_MODEL))
+            else:
+                verdict = evaluate(rec, ref, pending)
+
+            internal_matches = [
+                {'name': name, 'file': _uploaded_internal_match(name, internal_filenames)}
+                for name in ref.related_internal
+            ]
+            row.update(
+                record=rec.to_dict(),
+                changed=snap['changed'],
+                previous=snap['previous'],
+                status=verdict.get('status', 'review'),
+                headline=verdict.get('headline', ''),
+                detail=verdict.get('detail', ''),
+                action=verdict.get('action', ''),
+                internal_matches=internal_matches,
+                pending=pending,
+            )
+            if snap['changed'] and row['status'] == 'ok':
+                row['status'] = 'review'
+                row['headline'] = '직전 확인 이후 개정 발생'
+            if row['status'] == 'outdated' and ref.related_internal and not any(m['file'] for m in internal_matches):
+                row['status'] = 'missing'
+                row['headline'] = '관련 내규 파일이 업로드되지 않음'
+                row['detail'] = f"카드에 기재된 관련 내규({', '.join(ref.related_internal)})가 업로드된 파일 중에 없습니다."
+                row['action'] = '해당 내규 파일을 올리고 다시 분석해주세요.'
+            if row['status'] in ('review', 'outdated'):
+                matched_file = next((m['file'] for m in internal_matches if m['file']), None)
+                if matched_file:
+                    doc_text = next((t for fn, t in internal_docs if fn == matched_file), '')
+                    excerpt = relevant_excerpt(doc_text, ref.name, window=900)
+                    if excerpt:
+                        row['internal_excerpt'] = {'file': matched_file, 'text': excerpt[:2000]}
+            rows.append(row)
 
         counts = {k: sum(1 for r in rows if r.get('status') == k) for k in STATUS_META}
         counts['total'] = len(rows)
