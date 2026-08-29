@@ -114,6 +114,7 @@ h1 { font-size:20px; font-weight:750; letter-spacing:-.02em; margin:18px 0 3px; 
 .bar { height:15px; border-radius:0 5px 5px 0; min-width:3px; }
 .bar-row .vl { font-size:12px; white-space:nowrap; }
 .bar-row .dl { font-size:10.5px; margin-left:5px; font-weight:600; }
+.item.over { border-color:var(--act); background:color-mix(in srgb, var(--act) 5%, transparent); }
 
 .split { display:flex; height:26px; border-radius:8px; overflow:hidden; margin-bottom:10px; }
 .split i { display:block; }
@@ -519,78 +520,43 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
 
   <!-- ─────────────────────────────── 목표 -->
   <section role="tabpanel" id="p-goal" aria-labelledby="t-goal" hidden>
-    <h1>목표 세우기</h1>
-    <p class="lede">두 분이 같이 보면서 정하시라고 만들었습니다.</p>
+    <h1>이 달 예산</h1>
+    <p class="lede">항목마다 한 달에 얼마까지 쓸지 정하고, 지금 얼마나 썼는지 봅니다.</p>
 
-    <div class="card">
-      <h2>지금 우리 목표</h2>
-      <p class="sub">돈은 순서가 있습니다. 앞 단계를 건너뛰면 사고 한 번에 돌아옵니다.
-        <b>지금 두 분 차례</b>를 골라 뒀습니다.</p>
-      <div id="nowGoal"></div>
-      <details style="margin-top:14px">
-        <summary>다른 목표로 바꾸기</summary>
-        <div class="chiprow" id="goalPresets" style="margin-top:10px"></div>
-        <div class="field" style="margin-top:12px">
-          <label for="goalAmt">모을 금액</label>
-          <div class="unit"><input type="text" id="goalAmt" inputmode="numeric"
-               placeholder="예: 24,000,000"><span>원</span></div>
-        </div>
-        <div class="field">
-          <label for="goalMon">몇 달 안에</label>
-          <div class="unit"><input type="text" id="goalMon" inputmode="numeric"
-               placeholder="예: 24"><span>달</span></div>
-        </div>
-        <div class="field">
-          <label for="goalWhy">무엇을 위해 (적어 두면 흔들릴 때 도움이 됩니다)</label>
-          <div class="unit"><input type="text" id="goalWhy" placeholder="예: 둘째 준비"
-               style="text-align:left"></div>
-        </div>
-      </details>
-      <div class="verdict" id="goalVerdict"></div>
+    <div class="monthbar">
+      <button id="bPrev" aria-label="이전 달">&lsaquo;</button>
+      <div class="label" id="bMonth"></div>
+      <button id="bNext" aria-label="다음 달">&rsaquo;</button>
     </div>
 
     <div class="card">
-      <h2>이번 달에 할 일</h2>
-      <p class="sub">줄이라는 말만으로는 안 줄어듭니다. <b>이번 달에 할 것</b>만 셋 골랐습니다.
-        누가 맡을지 정하고, 하면 눌러 두세요.</p>
-      <div id="todos"></div>
-      <p class="note" id="todoNote" style="margin:12px 0 0"></p>
+      <h2>이 달 쓴 돈 · 한도</h2>
+      <div class="fig num" id="bFig"></div>
+      <p class="note" id="bNote" style="margin:6px 0 0"></p>
+      <div class="bars" id="bTotal" style="margin-top:14px"></div>
     </div>
 
     <div class="card">
-      <h2>우리 진도</h2>
-      <p class="sub">달마다 얼마를 남겼는지입니다. 세로 선이 목표에 필요한 금액입니다.
-        <b>몇 번 넘겼는지</b>가 저축률보다 정직합니다.</p>
-      <div class="bars" id="progress"></div>
-      <p class="note" id="progNote" style="margin:12px 0 0"></p>
+      <h2>항목별</h2>
+      <p class="sub">한도를 비워 두면 그 항목은 안 셉니다.
+        <b>최근 평균</b>을 눌러 넣고 거기서 줄여 잡으면 편합니다.</p>
+      <div id="caps"></div>
+      <div class="rowacts" style="margin-top:14px">
+        <button class="chip" id="capFill">최근 평균으로 다 채우기</button>
+        <button class="chip" id="capClear">한도 다 지우기</button>
+      </div>
     </div>
 
     <div class="card">
-      <h2>또래 기준과 견주기</h2>
-      <p class="sub">재무설계에서 흔히 쓰는 <b>수입 대비 비중</b>과 나란히 놓았습니다.
-        남의 평균 금액이 아니라 <b>두 분 수입에 맞춘 비율</b>이라 소득이 높으면 기준도 같이 올라갑니다.
-        빨간 것부터 손대면 됩니다.</p>
-      <div class="bars" id="benchBars"></div>
-      <div id="benchNote"></div>
-    </div>
-
-    <div class="card">
-      <h2>목표까지 이렇게</h2>
-      <p class="sub">목표를 채우는 데 필요한 만큼만 위에서부터 잘랐습니다.
-        각 항목에서 <b>실제로 무엇을 줄이면 되는지</b>까지 적었습니다.</p>
-      <div id="plan"></div>
-    </div>
-
-    <div class="card">
-      <h2>더 줄일 수 있는 곳</h2>
-      <p class="sub" id="restSub"></p>
-      <div id="actions"></div>
+      <h2>지난 달들</h2>
+      <p class="sub">정해 둔 한도로 지난 달들을 되짚어 봅니다.</p>
+      <div class="bars" id="bHist"></div>
+      <p class="note" id="bHistNote" style="margin:12px 0 0"></p>
     </div>
 
     <div class="card">
       <h2>매달 나가는 돈</h2>
-      <p class="sub">다달이 같은 곳으로 나가는 돈입니다. <b>구독</b>은 안 쓰면 끊으면 되고,
-        <b>통신·보험</b>처럼 안 끊는 것은 조건을 낮출 수 있는지 보는 자리입니다.</p>
+      <p class="sub">다달이 같은 곳으로 나가는 돈입니다. 한도를 정할 때 참고하세요.</p>
       <div id="leaks"></div>
     </div>
 
@@ -767,7 +733,7 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
   <button role="tab" id="t-home"  aria-controls="p-home"  aria-selected="true">요약</button>
   <button role="tab" id="t-spend" aria-controls="p-spend" aria-selected="false">소비</button>
   <button role="tab" id="t-list"  aria-controls="p-list"  aria-selected="false">내역</button>
-  <button role="tab" id="t-goal"  aria-controls="p-goal"  aria-selected="false">목표</button>
+  <button role="tab" id="t-goal"  aria-controls="p-goal"  aria-selected="false">예산</button>
   <button role="tab" id="t-asset" aria-controls="p-asset" aria-selected="false">자산</button>
   <button role="tab" id="t-tax"   aria-controls="p-tax"   aria-selected="false">절세</button>
 </div>
@@ -819,10 +785,10 @@ const INCOME = '수입', FIXED = '고정비', VARIABLE = '변동비', SAVING = '
    저장이 막힌 브라우저도 있어서 실패를 삼키고 계속 돌아가게 한다.
    ═══════════════════════════════════════════════════════════ */
 const KEY = 'budget.v3';
-const blank = () => ({ cat:{}, once:{}, tax:{}, name:{}, ok:{}, todo:{}, who:{}, add:[], at:0 });
+const blank = () => ({ cat:{}, once:{}, tax:{}, name:{}, ok:{}, cap:{}, add:[], at:0 });
 const shape = raw => ({ cat:raw.cat || {}, once:raw.once || {}, tax:raw.tax || {},
-                        name:raw.name || {}, ok:raw.ok || {}, todo:raw.todo || {},
-                        who:raw.who || {}, add:raw.add || [], at: +raw.at || 0 });
+                        name:raw.name || {}, ok:raw.ok || {}, cap:raw.cap || {},
+                        add:raw.add || [], at: +raw.at || 0 });
 let mine = blank(), canStore = true;
 
 /* 화면 안에 함께 실려 온 '저장된 결정'. 발행할 때 박아 넣은 것이라 어느 기기에서
@@ -2157,502 +2123,205 @@ function renderList() {
     : n ? `${n}건의 분류를 고쳤습니다. 이 폰에만 저장됩니다.` : '아직 고친 것이 없습니다.';
 }
 
-/* ─────────────────────────────── 목표
-   ── 또래 기준.
-   '얼마가 적당한가'에 남의 평균 금액을 들이대면 안 된다. 한 달에 950만원 버는
-   집에 2인 가구 평균 외식비 25만원을 들이대 봐야 쓸모가 없다. 재무설계에서
-   쓰는 방식대로 <수입 대비 비중>으로 잡는다 — 소득이 오르면 기준도 같이 오른다.
-   합이 75%라 나머지 25%가 저축 몫이다.
-
-   금액이 아니라 비중이므로 '남들은 이만큼 쓴다'가 아니라 '두 분 수입이면
-   이 정도까지가 무리 없다'는 뜻이다. 화면에도 그렇게 적었다. */
-const BENCH = [
-  { g:'주거·대출',  share:.25, keys:['주거·관리비','대출원리금','대출이자'],
-    fixed:true, tip:'대출 원리금이 대부분이면 당장 줄일 수 없는 돈입니다. 다만 이 비중이 30%를 넘으면 다른 데를 아무리 조여도 숨이 찹니다.' },
-  { g:'먹는 돈',    share:.13, keys:['식료품','외식','배달','카페·간식'],
-    tip:'장보기 비중이 높을수록 같은 끼니를 덜 쓰고 먹습니다. 배달·외식부터 봅니다.' },
-  { g:'자유지출',   share:.10, keys:['쇼핑','문화·여가','게임','여행·숙박','생활용품','구독료'],
-    tip:'쇼핑·취미·구독처럼 <b>안 써도 당장 큰일 안 나는</b> 돈입니다. 여기가 넘치면 가장 먼저 손댈 곳이고, 가장 티 안 나게 줄일 수 있는 곳이기도 합니다.' },
-  { g:'교통·차',    share:.08, keys:['교통','자동차'], tip:'대중교통을 월 15회 넘게 타면 K-패스로 20~30%를 돌려받습니다.' },
-  { g:'보험',       share:.06, keys:['보험'], floor:true,
-    tip:'이건 <b>모자라도 문제</b>인 항목입니다. 너무 적으면 병원비 한 번에 비상금이 날아갑니다.' },
-  { g:'의료·건강',  share:.04, keys:['의료·건강'], fixed:true,
-    tip:'줄일 항목이 아닙니다. 총급여의 3%를 넘는 의료비는 세액공제가 되니 「절세」 탭을 보세요.' },
-  { g:'통신',       share:.03, keys:['통신'],
-    tip:'요금제를 한 단계 낮추거나 알뜰폰으로 바꾸면 매달 티가 납니다.' },
-  { g:'경조·선물',  share:.02, keys:['경조·선물'], fixed:true,
-    tip:'예측 가능한 돈입니다. 연초에 한 해 경조사를 적어 두고 매달 떼어 두면 큰 달의 충격이 사라집니다.' },
-  { g:'반려동물',   share:.02, keys:['반려동물'], fixed:true,
-    tip:'병원비가 크게 튀는 항목입니다. 펫보험이나 따로 떼어 두는 통장을 생각해 보세요.' },
-  { g:'교육',       share:.02, keys:['교육'], fixed:true, tip:'' },
-];
-const BENCH_KEYS = new Set(BENCH.flatMap(b => b.keys));
-
-function benchRows() {
-  if (!BASE || !BASE.income) return [];
-  const n = BASE.months.length || 1, per = {};
-  let once = 0;
-  for (const r of ROWS) {
-    const k = catOf(r), nat = natOf(r);
-    if ((nat !== FIXED && nat !== VARIABLE) || !BASE.months.includes(monthOf(r))) continue;
-    /* 안마의자처럼 한 번 사고 마는 것은 빼고 본다. 599만원짜리 하나가
-       열두 달로 나뉘어 매달 50만원씩 쓰는 것처럼 보이면, 줄이라는 처방이
-       엉뚱한 데를 가리킨다. 「내역」에서 일회성으로 표시한 것만 뺀다. */
-    if (isOnce(r)) { once += r.a; continue; }
-    per[k] = (per[k] || 0) + r.a;
-  }
-  const rows = BENCH.map(b => {
-    const now = Math.round(b.keys.reduce((a,k) => a + (per[k]||0), 0) / n);
-    const target = Math.round(BASE.income * b.share);
-    return { ...b, now, target, over: now - target, ratio: now / BASE.income };
-  });
-  const etc = Math.round(Object.entries(per)
-    .filter(([k]) => !BENCH_KEYS.has(k))
-    .reduce((a,[,v]) => a + v, 0) / n);
-  return { rows, etc, once: Math.round(once / n) };
-}
-
-let goalRate = 40;
-
-/* 항목마다 '어떻게' 줄이는지. 숫자만 던지면 아무도 안 움직인다.
-   내용은 그 사람 데이터에서 뽑은 실제 가게 이름과 함께 보여준다. */
-const HOW = {
-  '배달': '배달은 음식값보다 <b>배달비·최소주문·수수료</b>가 더 큽니다. 주 3회를 2회로 줄이면 그것만으로 3분의 1입니다. 배달앱 구독을 쓰고 있다면 정말 본전을 뽑는지 「매달 새는 돈」에서 확인하세요.',
-  '외식': '평일 점심을 주 1~2회만 도시락으로 바꾸는 게 가장 안 아픕니다. 주말 외식은 남겨 두세요 — 다 끊으면 오래 못 갑니다.',
-  '카페·간식': '매일 한 잔이면 한 달에 스무 잔이 넘습니다. 회사 커피나 텀블러로 절반만 바꿔도 티가 납니다.',
-  '식료품': '장보기는 줄이는 게 아니라 <b>새는 걸 막는</b> 항목입니다. 주 1회로 몰아 사고 목록을 적어 가면 충동구매와 버리는 재료가 같이 줄어듭니다. 배달·외식이 늘면 오히려 여기가 늘어야 정상입니다.',
-  '생활용품': '떨어지면 사는 대신 <b>월 1회 몰아서</b> 사면 배송비와 충동구매가 함께 줄어듭니다.',
-  '쇼핑': '간편결제는 사는 순간이 너무 쉬워서 새는 곳입니다. <b>장바구니에 담고 24시간 뒤에 결제</b>하는 규칙 하나면 절반 가까이 사라집니다. 카드에 미리 충전해 두는 방식이면 충전 자체를 줄이세요.',
-  '교통': '택시·킥보드·공유차가 섞여 있으면 거기가 큽니다. 대중교통을 월 15회 넘게 타면 <b>K-패스</b>로 20~30%를 돌려받고, 서울 안에서만 다니면 <b>기후동행카드</b>가 더 쌀 수 있습니다.',
-  '문화·여가': '월 예산을 정해 두고 그 안에서 쓰세요. 줄이는 것보다 <b>정해 놓는 것</b>이 중요합니다. 이건 삶의 질이라 0으로 만들 항목이 아닙니다.',
-  '의료·건강': '줄일 항목이 아닙니다. 다만 연말정산에서 <b>총급여의 3%를 넘는 의료비</b>는 세액공제가 되니 「절세」 탭을 보세요.',
-  '경조·선물': '예측 가능한 지출입니다. 연초에 한 해 경조사를 적어 두고 매달 조금씩 떼어 두면 큰 달의 충격이 사라집니다.',
-  '여행·숙박': '여행은 줄이는 것보다 <b>미리 떼어 두는</b> 게 낫습니다. 매달 조금씩 모아 가면 카드값으로 돌아오지 않습니다.',
-  '자동차': '보험은 매년 갱신 때 비교하면 같은 보장으로 싸집니다. 주유는 주유 할인 카드 하나면 됩니다.',
-  '교육': '줄이기 전에 회사 지원금이나 국민내일배움카드로 대신할 수 있는지 먼저 확인하세요.',
-  '세금·기타': '무엇이 들어 있는지부터 보세요. 「내역」 탭에서 이 항목만 골라 분류를 나누면 손댈 곳이 보입니다.',
+/* ─────────────────────────────── 이 달 예산
+   항목마다 한 달에 얼마까지 쓸지 정해 두고, 지금 얼마나 썼는지만 본다.
+   앞서 이것저것 제안하는 화면을 만들었다가 걷어냈다 — 쓰는 사람이 정한
+   한도를 따라가는 것 말고는 군더더기다. */
+let bidx = -1;                       // 보고 있는 달 (-1 이면 마지막 달)
+const capOf = k => numIn((mine.cap || {})[k]);
+const bMonth = () => {
+  if (!MONTHS.length) return null;
+  if (bidx < 0 || bidx >= MONTHS.length) bidx = MONTHS.length - 1;
+  return MONTHS[bidx];
 };
 
-function actionRow(a, take) {
-  const tops = a.top.length
-    ? `<div class="why">큰 곳: ${a.top.map(t => `${esc(t.content)} 월 ${man(t.per_month)}`).join(' · ')}</div>` : '';
-  const row = el('div','act-row',
-    `<div class="top"><span class="cat">${esc(a.category)}</span>
-       <span class="save">월 ${man(take != null ? take : a.save_month)} 아낌</span></div>
-     <div class="from">보통 ${won(a.now)} → <b>${won(a.goal)}</b></div>
-     <div class="track"><i style="width:${a.now ? a.goal/a.now*100 : 0}%"></i></div>
-     <div class="why">${a.why} 1년이면 ${won((take != null ? take : a.save_month)*12)}.</div>
-     ${tops}
-     ${HOW[a.category] ? `<div class="how">${HOW[a.category]}</div>` : ''}`);
-  const open = el('button','chip','최근 6달 내역 보기');
-  open.style.cssText = 'width:100%; margin-top:10px; min-height:40px; font-size:13px';
-  const ms = new Set(recentMonths());
-  open.addEventListener('click', () => openDetail({
-    title: a.category, scope: '최근 6달',
-    rows: ROWS.filter(r => catOf(r) === a.category && ms.has(monthOf(r))) }));
-  row.appendChild(open);
-  return row;
-}
-
-/* ── 지금 우리 차례.
-   '얼마를 모을까'는 가계부에서 제일 어려운 질문이다. 그걸 사용자에게
-   떠넘기니 목표 세우기가 안 됐다. 답은 이미 「자산」 탭의 사다리가 알고 있다 —
-   최소 비상금 → 고금리 빚 → 비상금 3개월치 → 세액공제 저축 → 투자.
-   덜 끝난 첫 칸이 곧 지금 목표다. 그걸 금액과 기한으로 바꿔 놓는다. */
-function nowGoal() {
-  if (!BASE) return null;
-  const L = liquid(), steps = ladder();
-  const step = steps.find(s => !s.done && !s.unknown);
-  if (!step) return null;
-  const target = BASE.spend * EF_MONTHS;
-  const pension = taxVal('pension') + taxVal('irp');
-  const table = {
-    1: { need: EF_MIN,        have: L.total, label: `최소 비상금 ${won(EF_MIN)} 만들기` },
-    3: { need: target,        have: L.total, label: `비상금 ${EF_MONTHS}개월치 채우기` },
-    4: { need: PENSION_CAP,   have: pension, label: '연금계좌 한도 채우기 (올해)' },
-  };
-  const got = table[step.n];
-  if (!got) return { step, custom: true };
-  return { step, ...got, left: Math.max(got.need - got.have, 0),
-           pct: Math.min(got.have / got.need, 1) };
-}
-
-/* 목표를 '저축률 몇 %'로 물으면 와닿지 않는다. 모으고 싶은 건 대개 금액이다.
-   금액과 기한을 받아 매달 얼마가 필요한지로 바꾸고, 지금 남는 돈과의 차이를
-   그대로 '줄여야 할 돈'으로 넘긴다. */
-function goalNeed() {
-  const amt = numIn(mine.tax.goalAmt), mon = Math.max(numIn(mine.tax.goalMon), 1);
-  return amt ? Math.round(amt / mon) : 0;
-}
-
-/* 몇 달 뒤가 몇 년 몇 월인지 적어 준다. '24달'보다 '2028년 8월'이 와닿는다. */
-function monthsLater(n) {
-  const last = (BASE && BASE.months.length) ? BASE.months[BASE.months.length-1] : null;
-  const base = last ? new Date(+last.slice(0,4), +last.slice(5,7) - 1, 1) : new Date();
-  base.setMonth(base.getMonth() + n);
-  return `${base.getFullYear()}년 ${base.getMonth()+1}월`;
-}
-
-function drawNowGoal() {
-  const box = document.getElementById('nowGoal');
-  const g = nowGoal();
-  box.innerHTML = '';
-  if (!g) {
-    box.appendChild(el('p','note','사다리를 다 올라오셨습니다. 아래에서 직접 목표를 정하세요.'));
-    return;
+/* 그 달에 항목마다 얼마 썼나. 한도를 정할 만한 항목만 추린다. */
+function spendOf(m) {
+  const bag = {};
+  for (const r of ROWS) {
+    const n = natOf(r);
+    if ((n !== FIXED && n !== VARIABLE) || monthOf(r) !== m) continue;
+    bag[catOf(r)] = (bag[catOf(r)] || 0) + r.a;
   }
-  if (g.custom) {
-    box.appendChild(el('div','act-row',
-      `<div class="cat">${esc(g.step.label)}</div>
-       <div class="how" style="margin-top:8px">${g.step.note}<br>${g.step.why}</div>`));
-    return;
-  }
-  const left = g.left, now = BASE.income - BASE.spend;
-  const months = now > 0 ? Math.ceil(left / now) : null;
-  const half = now > 0 ? Math.ceil(left / (now / 2)) : null;
-  box.appendChild(el('div','act-row',
-    `<div class="top"><span class="cat">${esc(g.label)}</span>
-       <span class="save">${won(left)} 남음</span></div>
-     <div class="bars" style="margin:10px 0 8px">
-       <div class="bar-row"><div class="nm">모은 것</div>
-         <div><div class="bar" style="width:${Math.max(g.pct*100,2)}%;background:var(--save)"></div></div>
-         <div class="vl num">${(g.pct*100).toFixed(0)}%</div></div>
-     </div>
-     <div class="from">${won(g.have)} / ${won(g.need)}</div>
-     <div class="how" style="margin-top:10px">
-       ${months
-         ? `지금처럼 매달 <b>${won(now)}</b>이 남으면 <b>${months}달</b> —
-            <b>${monthsLater(months)}</b>에 끝납니다.
-            절반씩만 떼어도 ${half}달(${monthsLater(half)})입니다.`
-         : '지금은 남는 돈이 없어 기한을 잴 수 없습니다. 아래 「이번 달에 할 일」부터 보세요.'}
-       <br><br>${g.step.why}</div>`));
-  const b = el('button','chip','이걸 목표로 삼기');
-  b.style.cssText = 'width:100%; margin-top:12px; min-height:44px';
-  b.addEventListener('click', () => {
-    mine.tax.goalAmt = String(left);
-    mine.tax.goalMon = String(months || 12);
-    if (!mine.tax.goalWhy) mine.tax.goalWhy = g.label;
-    persist(); wireGoal(true); renderGoal();
-  });
-  box.appendChild(b);
+  return bag;
 }
 
-function renderGoal() {
-  if (!BASE) return;
-  const need = goalNeed();
-  const now = BASE.income - BASE.spend;
-  /* 목표를 안 넣었으면 지금 수준을 그대로 보여준다. */
-  const gap = need ? Math.max(need - now, 0) : 0;
-  goalRate = BASE.income ? Math.round((need || now) / BASE.income * 100) : 0;
-  const v = document.getElementById('goalVerdict');
-  const planBox = document.getElementById('plan');
-  planBox.innerHTML = '';
+/* 최근 여섯 달 평균. 한도를 처음 정할 때 기준으로 쓴다 — 남의 평균이 아니라
+   두 분이 실제로 쓴 돈이라 시작점으로 삼기에 낫다. */
+function avgOf() {
+  const ms = MONTHS.slice(-6);
+  const bag = {};
+  for (const r of ROWS) {
+    const n = natOf(r);
+    if ((n !== FIXED && n !== VARIABLE) || !ms.includes(monthOf(r))) continue;
+    bag[catOf(r)] = (bag[catOf(r)] || 0) + r.a;
+  }
+  Object.keys(bag).forEach(k => bag[k] = Math.round(bag[k] / (ms.length || 1)));
+  return bag;
+}
 
-  let inPlan = new Set();
+/* 한도를 매길 항목: 최근에 실제로 쓴 것 + 이미 한도를 정해 둔 것 */
+function capCats() {
+  const avg = avgOf(), caps = mine.cap || {};
+  const set = new Set([...Object.keys(avg).filter(k => avg[k] >= 10000),
+                       ...Object.keys(caps)]);
+  return [...set].sort((a,b) => (avg[b]||0) - (avg[a]||0));
+}
 
-  if (!need) {
-    v.className = 'verdict ok';
-    v.innerHTML = `지금은 한 달에 <b>${won(now)}</b>이 남습니다(저축률 <b>${goalRate}%</b>).<br>
-      위에 모을 금액과 기한을 넣으면 <b>얼마를 더 줄여야 하는지</b> 계산해 드립니다.`;
-    planBox.appendChild(el('p','note','목표 금액을 넣으면 여기에 계획이 나옵니다.'));
-  } else if (gap <= 0) {
-    const mon = Math.max(numIn(mine.tax.goalMon), 1);
-    v.className = 'verdict ok';
-    v.innerHTML = (mine.tax.goalWhy ? `<b>${esc(mine.tax.goalWhy)}</b> — ` : '')
-      + `매달 <b>${won(need)}</b>씩 ${mon}달(${monthsLater(mon)})이면 <b>${won(numIn(mine.tax.goalAmt))}</b>입니다.<br>
-      지금 <b>${won(now)}</b>이 남으니 <b>더 줄이지 않아도 닿습니다.</b>
-      남는 ${won(now - need)}은 「자산」 탭의 순서대로 보내세요.`;
-    planBox.appendChild(el('p','note','줄일 것이 없습니다. 그대로 모으시면 됩니다.'));
+function renderBudget() {
+  const m = bMonth();
+  if (!m) return;
+  document.getElementById('bMonth').textContent = `${m.slice(0,4)}년 ${+m.slice(5)}월`;
+  document.getElementById('bPrev').disabled = bidx <= 0;
+  document.getElementById('bNext').disabled = bidx >= MONTHS.length - 1;
+
+  const spent = spendOf(m), avg = avgOf(), cats = capCats();
+  const capped = cats.filter(k => capOf(k) > 0);
+  const capSum = capped.reduce((a,k) => a + capOf(k), 0);
+  const useSum = capped.reduce((a,k) => a + (spent[k] || 0), 0);
+  const allSum = Object.values(spent).reduce((a,v) => a + v, 0);
+
+  /* 이 달이 아직 안 끝났으면 '이 속도면 월말에 얼마'가 더 쓸모 있다. */
+  const part = isPartial(m) ? PARTIAL : null;
+  const pace = part ? Math.round(useSum / part.have * part.days) : useSum;
+
+  const fig = document.getElementById('bFig');
+  const note = document.getElementById('bNote');
+  if (!capSum) {
+    fig.innerHTML = wonf(allSum);
+    fig.style.color = 'var(--spend)';
+    note.innerHTML = '아직 한도를 안 정하셨습니다. 아래에서 항목마다 정해 주세요 — '
+      + '<b>최근 평균으로 다 채우기</b>를 누르고 줄이고 싶은 것만 낮추면 빠릅니다.';
+    document.getElementById('bTotal').innerHTML = '';
   } else {
-    let covered = 0;
-    const picked = [];
-    for (const a of ACTS) {
-      if (covered >= gap) break;
-      const take = Math.min(a.save_month, gap - covered);
-      covered += take; picked.push([a, take]);
-    }
-    const short = Math.max(gap - covered, 0);
-    v.className = 'verdict ' + (short ? 'no' : 'ok');
-    const mon = Math.max(numIn(mine.tax.goalMon), 1);
-    v.innerHTML = (mine.tax.goalWhy ? `<b>${esc(mine.tax.goalWhy)}</b> — ` : '')
-      + `<b>${won(numIn(mine.tax.goalAmt))}</b>을 ${mon}달(${monthsLater(mon)})에 모으려면
-      매달 <b>${won(need)}</b>이 필요합니다. 지금은 <b>${won(now)}</b>이 남으니
-      매달 <b>${won(gap)}</b>을 덜 써야 합니다.<br>`
-      + (short
-        ? `아래에서 <b>${won(covered)}</b>까지는 가능하고 <b>${won(short)}</b>이 모자랍니다.
-           목표를 낮추거나, 고정비를 손보거나, 「절세」 탭에서 돌려받을 세금을 찾으세요.`
-        : `아래 <b>${picked.length}개</b> 항목만 조정하면 닿습니다. 1년이면 <b>${won(gap*12)}</b>입니다.`);
-    picked.forEach(([a, take]) => planBox.appendChild(actionRow(a, take)));
-    inPlan = new Set(picked.map(([a]) => a.category));
+    const left = capSum - useSum;
+    fig.innerHTML = wonf(Math.abs(left));
+    fig.style.color = left >= 0 ? 'var(--save)' : 'var(--debt)';
+    note.innerHTML = `한도 <b>${won(capSum)}</b> 중 <b>${won(useSum)}</b> 썼습니다 — `
+      + (left >= 0 ? `<b>${won(left)}</b> 남았습니다.` : `<b>${won(-left)}</b> 넘었습니다.`)
+      + (part ? `<br>아직 ${part.have}일까지입니다. 이 속도면 월말에 <b>${won(pace)}</b> —
+                 ${pace > capSum ? `한도를 <b>${won(pace-capSum)}</b> 넘깁니다.` : '한도 안에 듭니다.'}` : '')
+      + (capped.length < cats.length
+         ? `<br><span style="color:var(--muted)">한도를 안 정한 항목에 ${won(allSum-useSum)}을 더 썼습니다.</span>` : '');
+    const mx = Math.max(capSum, useSum, 1);
+    document.getElementById('bTotal').innerHTML =
+      `<div class="bar-row"><div class="nm">쓴 돈</div>
+         <div style="position:relative">
+           <div class="bar" style="width:${useSum/mx*100}%;background:${
+             useSum > capSum ? 'var(--act)' : 'var(--spend)'}"></div>
+           <i style="position:absolute;top:-3px;bottom:-3px;left:${capSum/mx*100}%;
+              width:2px;background:var(--ink-2);opacity:.55"></i>
+         </div>
+         <div class="vl num">${man(useSum)}</div></div>
+       <div class="bar-row"><div class="nm">한도</div>
+         <div><div class="bar" style="width:${capSum/mx*100}%;background:var(--chip)"></div></div>
+         <div class="vl num">${man(capSum)}</div></div>`;
   }
 
-  /* 위에서 이미 보여준 항목을 아래에 또 늘어놓지 않는다.
-     같은 카드가 두 번 나오면 목표를 채운 게 어디까지인지 알 수 없다. */
-  const rest = ACTS.filter(a => !inPlan.has(a.category));
-  const box = document.getElementById('actions');
+  const box = document.getElementById('caps');
   box.innerHTML = '';
-  document.getElementById('restSub').innerHTML = rest.length
-    ? `목표를 채우고도 남는 항목입니다. 여기까지 손대면 매달
-       <b>${won(rest.reduce((s,a) => s + a.save_month, 0))}</b>을 더 아낍니다.
-       목표치는 남의 평균이 아니라 <b>본인이 이미 해낸 달</b>에서 가져왔습니다.`
-    : '';
-  if (!ACTS.length) box.appendChild(el('p','note','아직 달이 모자라 처방을 낼 수 없습니다.'));
-  else if (!rest.length) box.appendChild(el('p','note','줄일 수 있는 곳을 위에서 전부 썼습니다.'));
-  rest.forEach(a => box.appendChild(actionRow(a, null)));
-
-  drawBench();
-  drawNowGoal();
-  drawTodos();
-  drawProgress();
-
-  const lk = document.getElementById('leaks');
-  lk.innerHTML = '';
-  const BILLS2 = new Set(['통신','보험','주거·관리비','대출원리금','대출이자','교육','의료·건강']);
-  LEAKS.forEach(l => lk.appendChild(el('div','act-row',
-    `<div class="top"><span class="cat">${esc(l.content)}</span>
-       <span class="save">연 ${man(l.per_year)}</span></div>
-     <div class="from">${esc(l.category)} · 월 ${won(l.per_month)} · ${l.months}개월째
-       · ${BILLS2.has(l.category) ? '<b>청구서</b> — 조건을 낮출 수 있는지' : '<b>구독</b> — 안 쓰면 끊기'}</div>`)));
-  if (!LEAKS.length) lk.appendChild(el('p','note','매달 반복되는 결제가 없습니다.'));
-}
-
-/* ── 이번 달에 할 일.
-   '자유지출 165만 줄이세요'는 계획이 아니라 각오다. 이번 달에 할 수 있는
-   크기로 쪼개고, 누가 맡을지 정하고, 하면 눌러 두게 한다.
-   부부가 같이 쓰는 가계부라 '누가'가 특히 중요하다 — 둘 다의 일은 아무의
-   일도 아니다. */
-const WHOS = ['같이', ...(D.owners || [])];
-function todos() {
-  const out = [];
-  const got = benchRows();
-  const need = goalNeed(), now = BASE ? BASE.income - BASE.spend : 0;
-  const gap = need ? Math.max(need - now, 0) : 0;
-
-  /* ① 기준을 넘긴 것 중 줄일 수 있는 것. 한 번에 다 줄이라고 하지 않는다.
-        이번 달은 초과분의 3분의 1만 — 그래야 다음 달에도 한다. */
-  (got.rows || []).filter(r => !r.fixed && !r.floor && r.over > 100_000)
-    .sort((a,b) => b.over - a.over).slice(0, 2).forEach(r => {
-      const cut = Math.round(r.over / 3 / 10000) * 10000;
-      out.push({ id: 'cut:' + r.g, cat: r.g,
-        title: `${r.g} ${man(r.now)} → ${man(r.now - cut)}`,
-        save: cut,
-        how: `권장보다 ${man(r.over)} 많습니다. 한 번에 다 줄이면 오래 못 가니
-              이번 달은 <b>${man(cut)}</b>만 줄여 보세요. ${r.tip}` });
-    });
-
-  /* ② 매달 새는 돈. 한 번 끊으면 매달 효과가 난다 — 가장 값싼 승리다.
-        다만 통신비·보험료·관리비는 '새는 돈'이 아니라 살면서 내는 청구서다.
-        끊으라고 하면 안 되고, 낮출 수 있는지 보라고 해야 한다. */
-  const BILLS = new Set(['통신','보험','주거·관리비','대출원리금','대출이자','교육','의료·건강']);
-  const leak = (LEAKS || []).find(l => !BILLS.has(l.category));
-  const bill = (LEAKS || []).find(l => BILLS.has(l.category));
-  if (leak) out.push({
-    id: 'leak:' + leak.content, cat: '구독',
-    title: `${leak.content} 아직 쓰는지 확인`,
-    save: leak.per_month,
-    how: `${leak.months}달째 매달 <b>${won(leak.per_month)}</b>씩 나갑니다(1년 ${man(leak.per_year)}).
-          안 쓰면 끊고, 쓰면 그대로 두세요. 확인만 해도 됩니다.` });
-  else if (bill) out.push({
-    id: 'bill:' + bill.content, cat: bill.category,
-    title: `${bill.content} 한 단계 낮출 수 있는지`,
-    save: Math.round(bill.per_month * .2 / 1000) * 1000,
-    how: `${bill.months}달째 매달 <b>${won(bill.per_month)}</b>씩 나갑니다(1년 ${man(bill.per_year)}).
-          끊을 수 있는 돈은 아니지만 ${bill.category === '통신'
-            ? '요금제를 한 단계 낮추거나 알뜰폰으로 바꾸면'
-            : '조건을 다시 보면'} 매달 티가 납니다. 한 번만 확인해 보세요.` });
-
-  /* ③ 연금은 '아끼는' 게 아니라 '돌려받는' 것이라 효율이 제일 높다. */
-  const pension = taxVal('pension') + taxVal('irp');
-  if (pension < PENSION_CAP) {
-    const rate = taxVal('salary') > RATE_LINE ? RATE_LOW : RATE_HIGH;
-    const room = PENSION_CAP - pension;
-    out.push({ id: 'pension', cat: '절세',
-      title: '연금저축 자동이체 걸기',
-      save: 0,
-      how: `올해 <b>${won(room)}</b>이 비어 있습니다. 다 채우면 연말정산에서
-            <b>${won(Math.round(room * rate))}</b>을 돌려받습니다.
-            매달 ${won(Math.round(room/12))}씩 자동이체를 걸어 두면 신경 안 써도 됩니다.
-            아끼는 것보다 이게 먼저입니다.` });
-  }
-  return { list: out.slice(0, 3), gap };
-}
-
-function drawTodos() {
-  const { list, gap } = todos();
-  const box = document.getElementById('todos');
-  const note = document.getElementById('todoNote');
-  box.innerHTML = '';
-  if (!list.length) { box.appendChild(el('p','note','지금 손댈 것이 없습니다.')); note.textContent=''; return; }
-  mine.todo = mine.todo || {}; mine.who = mine.who || {};
-  list.forEach(t => {
-    const done = !!mine.todo[t.id];
-    const item = el('div','act-row' + (done ? ' edited' : ''),
-      `<div class="top"><span class="cat">${done ? '✓ ' : ''}${esc(t.title)}</span>
-         ${t.save ? `<span class="save">월 ${man(t.save)}</span>` : ''}</div>
-       <div class="how" style="margin-top:8px">${t.how}</div>`);
+  if (!cats.length) { box.appendChild(el('p','note','아직 쓴 기록이 모자랍니다.')); return; }
+  cats.forEach(k => {
+    const cap = capOf(k), use = spent[k] || 0, a = avg[k] || 0;
+    const over = cap > 0 && use > cap;
+    const item = el('div','item' + (over ? ' over' : ''),
+      `<div class="top"><span class="nm2">${esc(k)}</span>
+         <span class="amt num" style="color:${over ? 'var(--act)' : 'var(--ink)'}">${won(use)}</span></div>
+       <div class="why">${cap > 0
+         ? (over ? `한도 ${won(cap)}보다 <b style="color:var(--act)">${won(use-cap)} 넘음</b>`
+                 : `한도 ${won(cap)} · <b>${won(cap-use)}</b> 남음`)
+         : `한도를 안 정했습니다 · 최근 평균 ${won(a)}`}</div>
+       ${cap > 0 ? `<div class="bars" style="margin-top:8px"><div class="bar-row">
+            <div class="nm"></div>
+            <div><div class="bar" style="width:${Math.min(use/cap*100,100)}%;
+                 background:${over ? 'var(--act)' : 'var(--spend)'}"></div></div>
+            <div class="vl num">${Math.round(use/cap*100)}%</div></div></div>` : ''}`);
     const acts = el('div','rowacts');
-    const chk = el('button','mark', done ? '했어요 ✓' : '했어요');
-    chk.setAttribute('aria-pressed', done ? 'true' : 'false');
-    chk.addEventListener('click', () => {
-      if (done) delete mine.todo[t.id]; else mine.todo[t.id] = 1;
-      persist(); drawTodos(); if (typeof drawSync === 'function') drawSync();
+    const wrap = el('div','unit');
+    wrap.style.cssText = 'flex:1';
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.inputMode = 'numeric';
+    inp.placeholder = a ? `평균 ${a.toLocaleString('ko-KR')}` : '한도';
+    inp.value = cap ? cap.toLocaleString('ko-KR') : '';
+    inp.setAttribute('aria-label', k + ' 한도');
+    inp.addEventListener('input', () => {
+      const n = numIn(inp.value);
+      mine.cap = mine.cap || {};
+      if (n) mine.cap[k] = String(n); else delete mine.cap[k];
+      inp.value = n ? n.toLocaleString('ko-KR') : '';
+      persist(); renderBudget(); if (typeof drawSync === 'function') drawSync();
     });
-    acts.appendChild(chk);
-    if (WHOS.length > 1) {
-      const sel = document.createElement('select');
-      ['맡을 사람', ...WHOS].forEach((w,i) => {
-        const o = document.createElement('option');
-        o.value = i ? w : ''; o.textContent = i ? w : '맡을 사람';
-        o.selected = (mine.who[t.id] || '') === o.value;
-        sel.appendChild(o);
+    const won_ = document.createElement('span'); won_.textContent = '원';
+    wrap.appendChild(inp); wrap.appendChild(won_);
+    acts.appendChild(wrap);
+    if (a) {
+      const b = el('button','mark','평균');
+      b.addEventListener('click', () => {
+        mine.cap = mine.cap || {}; mine.cap[k] = String(a);
+        persist(); renderBudget(); if (typeof drawSync === 'function') drawSync();
       });
-      sel.addEventListener('change', () => {
-        if (sel.value) mine.who[t.id] = sel.value; else delete mine.who[t.id];
-        persist(); drawTodos(); if (typeof drawSync === 'function') drawSync();
-      });
-      acts.appendChild(sel);
+      acts.appendChild(b);
     }
     item.appendChild(acts);
     box.appendChild(item);
   });
-  const saved = list.filter(t => mine.todo[t.id]).reduce((a,t) => a + t.save, 0);
-  const total = list.reduce((a,t) => a + t.save, 0);
-  note.innerHTML = gap
-    ? `셋 다 하면 매달 <b>${won(total)}</b>이 생깁니다. 목표에 필요한 건
-       <b>${won(gap)}</b>입니다.` + (total >= gap
-         ? ' 이것만으로 닿습니다.' : ` ${won(gap - total)}은 「또래 기준」에서 더 찾아보세요.`)
-      + (saved ? `<br>지금까지 체크한 것만 해도 월 <b>${won(saved)}</b>입니다.` : '')
-    : `셋 다 하면 매달 <b>${won(total)}</b>이 생깁니다.`;
-}
 
-/* ── 우리 진도. 저축률 한 숫자보다 '몇 번 넘겼나'가 정직하다.
-   목표선을 넘긴 달과 못 넘긴 달이 눈에 보여야 다음 달에 할 말이 생긴다. */
-function drawProgress() {
-  const box = document.getElementById('progress');
-  const note = document.getElementById('progNote');
-  box.innerHTML = '';
-  if (!BASE) return;
-  const need = goalNeed();
-  const rows = BASE.months.map(m => {
-    const t = totals(m, false);
-    return { m, left: t.income - spent(t) };
+  /* 지난 달들 — 정해 둔 한도로 되짚어 본다 */
+  const hist = document.getElementById('bHist');
+  const hnote = document.getElementById('bHistNote');
+  hist.innerHTML = '';
+  if (!capSum) { hnote.textContent = ''; return; }
+  const rows = MONTHS.map(mm => {
+    const sp = spendOf(mm);
+    return { m: mm, used: capped.reduce((a,k) => a + (sp[k] || 0), 0) };
   });
-  const mx = Math.max(...rows.map(r => Math.abs(r.left)), need, 1);
+  const mx2 = Math.max(...rows.map(r => r.used), capSum, 1);
   rows.forEach(r => {
-    const ok = need ? r.left >= need : r.left > 0;
-    box.appendChild(el('div','bar-row',
-      `<div class="nm">${+r.m.slice(5)}월</div>
+    const over = r.used > capSum, part2 = isPartial(r.m);
+    hist.appendChild(el('div','bar-row',
+      `<div class="nm">${+r.m.slice(5)}월${part2 ? ' *' : ''}</div>
        <div style="position:relative">
-         <div class="bar" style="width:${Math.max(Math.abs(r.left)/mx*100,2)}%;
-              background:${r.left < 0 ? 'var(--debt)' : ok ? 'var(--save)' : 'var(--spend)'}"></div>
-         ${need ? `<i style="position:absolute;top:-3px;bottom:-3px;left:${need/mx*100}%;
-            width:2px;background:var(--ink-2);opacity:.55"></i>` : ''}
-       </div>
-       <div class="vl num">${man(r.left)}</div>`));
-  });
-  const hit = rows.filter(r => need ? r.left >= need : r.left > 0).length;
-  note.innerHTML = need
-    ? `최근 ${rows.length}달 중 <b>${hit}달</b>이 목표(${won(need)})를 넘겼습니다.`
-      + (hit >= rows.length * .7 ? ' 이대로면 됩니다.'
-         : hit ? ' 넘긴 달에 무엇이 달랐는지 같이 보세요 — 그게 답입니다.'
-         : ' 한 달도 못 넘겼다면 목표가 지금 형편보다 큽니다. 기한을 늘리는 쪽이 낫습니다.')
-    : `최근 ${rows.length}달 중 <b>${hit}달</b>이 남았습니다. 위에서 목표를 정하면 목표선이 그려집니다.`;
-}
-
-/* 또래 기준 막대. 넘친 만큼을 빨갛게 얹어 보여준다 — 숫자 표보다
-   '얼마나 넘쳤나'가 한눈에 들어와야 어디부터 손댈지 정해진다. */
-function drawBench() {
-  const got = benchRows();
-  const box = document.getElementById('benchBars');
-  const note = document.getElementById('benchNote');
-  box.innerHTML = ''; note.innerHTML = '';
-  if (!got.rows || !got.rows.length) return;
-  const rows = [...got.rows].sort((a,b) => b.over - a.over);
-  const mx = Math.max(...rows.map(r => Math.max(r.now, r.target)), 1);
-  rows.forEach(r => {
-    const short = r.floor && r.over < 0;
-    const bad = !r.fixed && r.over > 0;
-    const tag = bad ? `<span class="dl" style="color:var(--act)">+${man(r.over)}</span>`
-      : short ? `<span class="dl" style="color:var(--act)">${man(-r.over)} 모자람</span>`
-      : r.over > 0 ? `<span class="dl" style="color:var(--muted)">+${man(r.over)}</span>`
-      : `<span class="dl" style="color:var(--good)">여유</span>`;
-    const row = el('div','bar-row',
-      `<div class="nm">${esc(r.g)}</div>
-       <div style="position:relative">
-         <div class="bar" style="width:${Math.max(r.now/mx*100,2)}%;background:${
-           bad || short ? 'var(--act)' : 'var(--spend)'}"></div>
-         <i style="position:absolute;top:-3px;bottom:-3px;left:${r.target/mx*100}%;
+         <div class="bar" style="width:${Math.max(r.used/mx2*100,2)}%;
+              background:${over ? 'var(--act)' : 'var(--save)'};opacity:${part2 ? .45 : 1}"></div>
+         <i style="position:absolute;top:-3px;bottom:-3px;left:${capSum/mx2*100}%;
             width:2px;background:var(--ink-2);opacity:.55"></i>
        </div>
-       <div class="vl num">${man(r.now)}${tag}</div>`);
-    box.appendChild(row);
+       <div class="vl num">${man(r.used)}</div>`));
   });
-  const worst = rows.filter(r => !r.fixed && r.over > 0);
-  const lack = rows.filter(r => r.floor && r.over < 0);
-  note.innerHTML =
-    `<p class="note" style="margin:12px 0 0">세로 선이 <b>권장 수준</b>입니다(수입의 정해진 비율).
-       ${got.etc ? `여기 안 든 것(미분류·개인송금 등)이 월 <b>${won(got.etc)}</b> 더 있습니다.` : ''}
-       ${got.once ? `일회성으로 표시한 월 <b>${won(got.once)}</b>은 빼고 셌습니다.`
-         : '가전처럼 한 번 사고 마는 큰돈이 섞여 있으면 「내역」 탭에서 <b>일회성</b>으로 표시하세요 — 여기서 빠집니다.'}</p>`
-    + (worst.length ? worst.slice(0,2).map(r => `<div class="act-row" style="margin-top:12px">
-         <div class="top"><span class="cat">${esc(r.g)}</span>
-           <span class="save">월 ${man(r.over)} 많음</span></div>
-         <div class="from">지금 ${won(r.now)} · 권장 ${won(r.target)}
-           (수입의 ${(r.ratio*100).toFixed(0)}% → ${(r.share*100).toFixed(0)}%)</div>
-         <div class="how" style="margin-top:8px">${r.tip}</div></div>`).join('') : '')
-    + (lack.length ? lack.map(r => `<div class="act-row" style="margin-top:12px">
-         <div class="top"><span class="cat">${esc(r.g)}</span>
-           <span class="save" style="color:var(--act)">월 ${man(-r.over)} 모자람</span></div>
-         <div class="from">지금 ${won(r.now)} · 권장 ${won(r.target)}</div>
-         <div class="how" style="margin-top:8px">${r.tip}</div></div>`).join('') : '');
+  const whole = rows.filter(r => !isPartial(r.m));
+  const ok = whole.filter(r => r.used <= capSum).length;
+  hnote.innerHTML = `지금 한도(<b>${won(capSum)}</b>)로 보면 최근 ${whole.length}달 중 `
+    + `<b>${ok}달</b>이 한도 안에 들었습니다.`
+    + (ok === 0 ? ' 한 달도 못 지켰다면 한도가 형편보다 빡빡합니다. 평균에 가깝게 올려 잡으세요.'
+       : ok === whole.length ? ' 여유가 있으면 한 단계 낮춰 잡아 보세요.' : '')
+    + (rows.some(r => isPartial(r.m)) ? ' (*는 아직 안 끝난 달)' : '');
 }
 
-/* 목표 금액은 손으로 적기 번거롭다. 두 분 숫자로 계산한 것을 눌러 넣게 한다. */
-function drawPresets() {
-  const box = document.getElementById('goalPresets');
-  box.innerHTML = '';
-  if (!BASE) return;
-  const Lq = liquid();
-  const picks = [];
-  const ef = Math.max(BASE.spend * EF_MONTHS - Lq.total, 0);
-  if (ef > 0) picks.push(['비상금 ' + EF_MONTHS + '개월치', Math.round(ef), 24]);
-  picks.push(['연금 한도 채우기', PENSION_CAP, 12]);
-  const debt = (D.loans || []).filter(l => !/주택|주담대/.test(l.name || ''))
-    .reduce((a,l) => a + (l['잔액']||0), 0);
-  if (debt > 0) picks.push(['집 빼고 빚 다 갚기', Math.round(debt), 36]);
-  picks.forEach(([label, amt, mon]) => {
-    const b = el('button','chip', `${label} ${man(amt)}`);
-    b.addEventListener('click', () => {
-      mine.tax.goalAmt = String(amt); mine.tax.goalMon = String(mon);
-      persist(); wireGoal(true); renderGoal();
-    });
-    box.appendChild(b);
-  });
-}
+document.getElementById('bPrev').addEventListener('click', () => {
+  if (bidx > 0) { bidx--; renderBudget(); } });
+document.getElementById('bNext').addEventListener('click', () => {
+  if (bidx < MONTHS.length - 1) { bidx++; renderBudget(); } });
+document.getElementById('capFill').addEventListener('click', () => {
+  const avg = avgOf();
+  mine.cap = mine.cap || {};
+  capCats().forEach(k => { if (avg[k]) mine.cap[k] = String(avg[k]); });
+  persist(); renderBudget(); if (typeof drawSync === 'function') drawSync();
+});
+document.getElementById('capClear').addEventListener('click', () => {
+  mine.cap = {}; persist(); renderBudget(); if (typeof drawSync === 'function') drawSync();
+});
 
-function wireGoal(force) {
-  const why = document.getElementById('goalWhy');
-  if (why && !why.dataset.wired) {
-    why.dataset.wired = '1';
-    why.addEventListener('input', () => { mine.tax.goalWhy = why.value; persist(); renderGoal(); });
-  }
-  if (why && (force || !why.value)) why.value = mine.tax.goalWhy || '';
-  [['goalAmt','goalAmt'], ['goalMon','goalMon']].forEach(([id, key]) => {
-    const inp = document.getElementById(id);
-    if (!inp.dataset.wired) {
-      inp.dataset.wired = '1';
-      inp.addEventListener('input', () => {
-        mine.tax[key] = String(numIn(inp.value));
-        const n = numIn(inp.value);
-        inp.value = n ? n.toLocaleString('ko-KR') : '';
-        persist(); renderGoal();
-      });
-    }
-    if (force || !inp.value) {
-      const n = numIn(mine.tax[key]);
-      inp.value = n ? n.toLocaleString('ko-KR') : '';
-    }
-  });
+function renderGoal() {
+  renderBudget();
+  const lk = document.getElementById('leaks');
+  lk.innerHTML = '';
+  const BILLS = new Set(['통신','보험','주거·관리비','대출원리금','대출이자','교육','의료·건강']);
+  LEAKS.forEach(l => lk.appendChild(el('div','act-row',
+    `<div class="top"><span class="cat">${esc(l.content)}</span>
+       <span class="save">연 ${man(l.per_year)}</span></div>
+     <div class="from">${esc(l.category)} · 월 ${won(l.per_month)} · ${l.months}개월째
+       · ${BILLS.has(l.category) ? '<b>청구서</b>' : '<b>구독</b>'}</div>`)));
+  if (!LEAKS.length) lk.appendChild(el('p','note','매달 반복되는 결제가 없습니다.'));
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -3230,7 +2899,7 @@ function wireTax() {
 function refresh() {
   recompute();
   renderHome(); renderMonth(); renderList(); renderGoal(); renderAsset(); renderTax();
-  drawNet(); wireHome(); drawPresets(); wireGoal();
+  drawNet(); wireHome();
   if (typeof drawSync === 'function') drawSync();
   const dot = (ROWS.filter(r => catOf(r) === '미분류').length || SPIKES.length
                || reviewItems().length) ? '<span class="dot"></span>' : '';
@@ -3257,7 +2926,7 @@ document.getElementById('moreGroups').addEventListener('click', () => {
 });
 document.getElementById('resetEdits').addEventListener('click', () => {
   mine.cat = {}; mine.once = {}; mine.name = {}; mine.ok = {};
-  mine.todo = {}; mine.who = {}; mine.add = []; persist(); refresh();
+  mine.cap = {}; mine.add = []; persist(); refresh();
 });
 
 /* ═══════════════════════════════════════════════════════════
@@ -3649,7 +3318,7 @@ document.getElementById('impFile').addEventListener('change', e => {
     try {
       const got = JSON.parse(rd.result);
       let n = 0;
-      ['cat','once','name','ok','todo','who'].forEach(k => {
+      ['cat','once','name','ok','cap'].forEach(k => {
         if (got[k]) { Object.assign(mine[k], got[k]); n += Object.keys(got[k]).length; }
       });
       if (got.tax) Object.assign(mine.tax, got.tax);
