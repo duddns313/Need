@@ -30,6 +30,15 @@
   ],
   "content_rules": [
     {
+      "category": "식료품",
+      "keywords": [
+        "B마트",
+        "비마트",
+        "배민스토어",
+        "배민장보기"
+      ]
+    },
+    {
       "category": "의료·건강",
       "keywords": [
         "산후조리",

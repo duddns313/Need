@@ -425,6 +425,7 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
         </div>
       </div>
       <p class="note" id="listCount" style="margin:12px 0 0"></p>
+      <button class="chip" id="flatAll" style="width:100%; margin-top:10px" hidden></button>
     </div>
 
     <div class="card">
@@ -1974,6 +1975,25 @@ function renderList() {
   const rows = currentRows();
   document.getElementById('listCount').textContent =
     `${rows.length.toLocaleString('ko-KR')}건 · 금액 큰 순으로 보여줍니다.`;
+
+  /* 한 가게가 여러 이름으로 찍히는 일이 흔하다. 배민만 해도 '(주)우아한형제들',
+     '우아한형제들', '주식회사 우아한형제들', '우아한형제들_B마트'로 갈린다.
+     이름끼리 묶어 놓으면 여섯 덩어리로 흩어져서, 한 곳에서 산 걸 한눈에
+     훑을 수가 없다. 게다가 같은 배민이라도 배달과 장보기는 다른 항목이라
+     한 건씩 봐야 갈린다. 찾은 것을 통째로 펴서 보여주는 길을 따로 낸다. */
+  const flat = document.getElementById('flatAll');
+  const q = query.trim();
+  flat.hidden = !rows.length || (!q && filterId === 'all');
+  if (!flat.hidden) {
+    const sum = rows.reduce((a,r) => a + r.a, 0);
+    flat.textContent = `${q ? `「${q}」 ` : ''}${rows.length}건 ${won(sum)} — 한 목록으로 펴서 보기`;
+    flat.onclick = () => openDetail({
+      /* josa()는 낱말에 조사를 붙여 돌려준다. 여기선 낫표 뒤에 붙여야 해서
+         조사만 떼어 쓴다. '우아한'이면 '으로', '배민'이면 '으로', '쿠팡'이면 '로'. */
+      title: q ? `「${q}」${josa(q, '으로', '로').slice(q.length)} 찾은 것`
+               : (FILTERS.find(f => f.id === filterId) || {}).label,
+      scope: '전체 기간 · 한 건씩 고칠 수 있습니다', rows, byName: false });
+  }
 
   /* 같은 이름끼리 묶어 한 번에 고친다. 1,700건을 한 줄씩 고칠 사람은 없다. */
   const seen = new Set(rows.map(nameOf));
