@@ -520,24 +520,49 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
   <!-- ─────────────────────────────── 목표 -->
   <section role="tabpanel" id="p-goal" aria-labelledby="t-goal" hidden>
     <h1>목표 세우기</h1>
-    <p class="lede">저축률을 정하면 어디서 어떻게 줄이면 되는지 계산합니다.</p>
+    <p class="lede">두 분이 같이 보면서 정하시라고 만들었습니다.</p>
 
     <div class="card">
-      <h2>얼마를, 언제까지</h2>
-      <p class="sub">모으고 싶은 <b>금액</b>과 <b>기한</b>을 넣으면 매달 얼마를 남겨야 하는지,
-        지금과 얼마나 차이 나는지 계산합니다.</p>
-      <div class="chiprow" id="goalPresets"></div>
-      <div class="field" style="margin-top:12px">
-        <label for="goalAmt">모을 금액</label>
-        <div class="unit"><input type="text" id="goalAmt" inputmode="numeric"
-             placeholder="예: 24,000,000"><span>원</span></div>
-      </div>
-      <div class="field">
-        <label for="goalMon">몇 달 안에</label>
-        <div class="unit"><input type="text" id="goalMon" inputmode="numeric"
-             placeholder="예: 24"><span>달</span></div>
-      </div>
+      <h2>지금 우리 목표</h2>
+      <p class="sub">돈은 순서가 있습니다. 앞 단계를 건너뛰면 사고 한 번에 돌아옵니다.
+        <b>지금 두 분 차례</b>를 골라 뒀습니다.</p>
+      <div id="nowGoal"></div>
+      <details style="margin-top:14px">
+        <summary>다른 목표로 바꾸기</summary>
+        <div class="chiprow" id="goalPresets" style="margin-top:10px"></div>
+        <div class="field" style="margin-top:12px">
+          <label for="goalAmt">모을 금액</label>
+          <div class="unit"><input type="text" id="goalAmt" inputmode="numeric"
+               placeholder="예: 24,000,000"><span>원</span></div>
+        </div>
+        <div class="field">
+          <label for="goalMon">몇 달 안에</label>
+          <div class="unit"><input type="text" id="goalMon" inputmode="numeric"
+               placeholder="예: 24"><span>달</span></div>
+        </div>
+        <div class="field">
+          <label for="goalWhy">무엇을 위해 (적어 두면 흔들릴 때 도움이 됩니다)</label>
+          <div class="unit"><input type="text" id="goalWhy" placeholder="예: 둘째 준비"
+               style="text-align:left"></div>
+        </div>
+      </details>
       <div class="verdict" id="goalVerdict"></div>
+    </div>
+
+    <div class="card">
+      <h2>이번 달에 할 일</h2>
+      <p class="sub">줄이라는 말만으로는 안 줄어듭니다. <b>이번 달에 할 것</b>만 셋 골랐습니다.
+        누가 맡을지 정하고, 하면 눌러 두세요.</p>
+      <div id="todos"></div>
+      <p class="note" id="todoNote" style="margin:12px 0 0"></p>
+    </div>
+
+    <div class="card">
+      <h2>우리 진도</h2>
+      <p class="sub">달마다 얼마를 남겼는지입니다. 세로 선이 목표에 필요한 금액입니다.
+        <b>몇 번 넘겼는지</b>가 저축률보다 정직합니다.</p>
+      <div class="bars" id="progress"></div>
+      <p class="note" id="progNote" style="margin:12px 0 0"></p>
     </div>
 
     <div class="card">
@@ -563,8 +588,9 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
     </div>
 
     <div class="card">
-      <h2>매달 새는 돈</h2>
-      <p class="sub">한 번 끊으면 매달 효과가 납니다. 지금도 쓰는지 확인해 보세요.</p>
+      <h2>매달 나가는 돈</h2>
+      <p class="sub">다달이 같은 곳으로 나가는 돈입니다. <b>구독</b>은 안 쓰면 끊으면 되고,
+        <b>통신·보험</b>처럼 안 끊는 것은 조건을 낮출 수 있는지 보는 자리입니다.</p>
       <div id="leaks"></div>
     </div>
 
@@ -793,10 +819,10 @@ const INCOME = '수입', FIXED = '고정비', VARIABLE = '변동비', SAVING = '
    저장이 막힌 브라우저도 있어서 실패를 삼키고 계속 돌아가게 한다.
    ═══════════════════════════════════════════════════════════ */
 const KEY = 'budget.v3';
-const blank = () => ({ cat:{}, once:{}, tax:{}, name:{}, ok:{}, add:[], at:0 });
+const blank = () => ({ cat:{}, once:{}, tax:{}, name:{}, ok:{}, todo:{}, who:{}, add:[], at:0 });
 const shape = raw => ({ cat:raw.cat || {}, once:raw.once || {}, tax:raw.tax || {},
-                        name:raw.name || {}, ok:raw.ok || {}, add:raw.add || [],
-                        at: +raw.at || 0 });
+                        name:raw.name || {}, ok:raw.ok || {}, todo:raw.todo || {},
+                        who:raw.who || {}, add:raw.add || [], at: +raw.at || 0 });
 let mine = blank(), canStore = true;
 
 /* 화면 안에 함께 실려 온 '저장된 결정'. 발행할 때 박아 넣은 것이라 어느 기기에서
@@ -2228,12 +2254,87 @@ function actionRow(a, take) {
   return row;
 }
 
+/* ── 지금 우리 차례.
+   '얼마를 모을까'는 가계부에서 제일 어려운 질문이다. 그걸 사용자에게
+   떠넘기니 목표 세우기가 안 됐다. 답은 이미 「자산」 탭의 사다리가 알고 있다 —
+   최소 비상금 → 고금리 빚 → 비상금 3개월치 → 세액공제 저축 → 투자.
+   덜 끝난 첫 칸이 곧 지금 목표다. 그걸 금액과 기한으로 바꿔 놓는다. */
+function nowGoal() {
+  if (!BASE) return null;
+  const L = liquid(), steps = ladder();
+  const step = steps.find(s => !s.done && !s.unknown);
+  if (!step) return null;
+  const target = BASE.spend * EF_MONTHS;
+  const pension = taxVal('pension') + taxVal('irp');
+  const table = {
+    1: { need: EF_MIN,        have: L.total, label: `최소 비상금 ${won(EF_MIN)} 만들기` },
+    3: { need: target,        have: L.total, label: `비상금 ${EF_MONTHS}개월치 채우기` },
+    4: { need: PENSION_CAP,   have: pension, label: '연금계좌 한도 채우기 (올해)' },
+  };
+  const got = table[step.n];
+  if (!got) return { step, custom: true };
+  return { step, ...got, left: Math.max(got.need - got.have, 0),
+           pct: Math.min(got.have / got.need, 1) };
+}
+
 /* 목표를 '저축률 몇 %'로 물으면 와닿지 않는다. 모으고 싶은 건 대개 금액이다.
    금액과 기한을 받아 매달 얼마가 필요한지로 바꾸고, 지금 남는 돈과의 차이를
    그대로 '줄여야 할 돈'으로 넘긴다. */
 function goalNeed() {
   const amt = numIn(mine.tax.goalAmt), mon = Math.max(numIn(mine.tax.goalMon), 1);
   return amt ? Math.round(amt / mon) : 0;
+}
+
+/* 몇 달 뒤가 몇 년 몇 월인지 적어 준다. '24달'보다 '2028년 8월'이 와닿는다. */
+function monthsLater(n) {
+  const last = (BASE && BASE.months.length) ? BASE.months[BASE.months.length-1] : null;
+  const base = last ? new Date(+last.slice(0,4), +last.slice(5,7) - 1, 1) : new Date();
+  base.setMonth(base.getMonth() + n);
+  return `${base.getFullYear()}년 ${base.getMonth()+1}월`;
+}
+
+function drawNowGoal() {
+  const box = document.getElementById('nowGoal');
+  const g = nowGoal();
+  box.innerHTML = '';
+  if (!g) {
+    box.appendChild(el('p','note','사다리를 다 올라오셨습니다. 아래에서 직접 목표를 정하세요.'));
+    return;
+  }
+  if (g.custom) {
+    box.appendChild(el('div','act-row',
+      `<div class="cat">${esc(g.step.label)}</div>
+       <div class="how" style="margin-top:8px">${g.step.note}<br>${g.step.why}</div>`));
+    return;
+  }
+  const left = g.left, now = BASE.income - BASE.spend;
+  const months = now > 0 ? Math.ceil(left / now) : null;
+  const half = now > 0 ? Math.ceil(left / (now / 2)) : null;
+  box.appendChild(el('div','act-row',
+    `<div class="top"><span class="cat">${esc(g.label)}</span>
+       <span class="save">${won(left)} 남음</span></div>
+     <div class="bars" style="margin:10px 0 8px">
+       <div class="bar-row"><div class="nm">모은 것</div>
+         <div><div class="bar" style="width:${Math.max(g.pct*100,2)}%;background:var(--save)"></div></div>
+         <div class="vl num">${(g.pct*100).toFixed(0)}%</div></div>
+     </div>
+     <div class="from">${won(g.have)} / ${won(g.need)}</div>
+     <div class="how" style="margin-top:10px">
+       ${months
+         ? `지금처럼 매달 <b>${won(now)}</b>이 남으면 <b>${months}달</b> —
+            <b>${monthsLater(months)}</b>에 끝납니다.
+            절반씩만 떼어도 ${half}달(${monthsLater(half)})입니다.`
+         : '지금은 남는 돈이 없어 기한을 잴 수 없습니다. 아래 「이번 달에 할 일」부터 보세요.'}
+       <br><br>${g.step.why}</div>`));
+  const b = el('button','chip','이걸 목표로 삼기');
+  b.style.cssText = 'width:100%; margin-top:12px; min-height:44px';
+  b.addEventListener('click', () => {
+    mine.tax.goalAmt = String(left);
+    mine.tax.goalMon = String(months || 12);
+    if (!mine.tax.goalWhy) mine.tax.goalWhy = g.label;
+    persist(); wireGoal(true); renderGoal();
+  });
+  box.appendChild(b);
 }
 
 function renderGoal() {
@@ -2257,7 +2358,8 @@ function renderGoal() {
   } else if (gap <= 0) {
     const mon = Math.max(numIn(mine.tax.goalMon), 1);
     v.className = 'verdict ok';
-    v.innerHTML = `매달 <b>${won(need)}</b>씩 ${mon}달이면 <b>${won(numIn(mine.tax.goalAmt))}</b>입니다.<br>
+    v.innerHTML = (mine.tax.goalWhy ? `<b>${esc(mine.tax.goalWhy)}</b> — ` : '')
+      + `매달 <b>${won(need)}</b>씩 ${mon}달(${monthsLater(mon)})이면 <b>${won(numIn(mine.tax.goalAmt))}</b>입니다.<br>
       지금 <b>${won(now)}</b>이 남으니 <b>더 줄이지 않아도 닿습니다.</b>
       남는 ${won(now - need)}은 「자산」 탭의 순서대로 보내세요.`;
     planBox.appendChild(el('p','note','줄일 것이 없습니다. 그대로 모으시면 됩니다.'));
@@ -2272,7 +2374,8 @@ function renderGoal() {
     const short = Math.max(gap - covered, 0);
     v.className = 'verdict ' + (short ? 'no' : 'ok');
     const mon = Math.max(numIn(mine.tax.goalMon), 1);
-    v.innerHTML = `<b>${won(numIn(mine.tax.goalAmt))}</b>을 ${mon}달에 모으려면
+    v.innerHTML = (mine.tax.goalWhy ? `<b>${esc(mine.tax.goalWhy)}</b> — ` : '')
+      + `<b>${won(numIn(mine.tax.goalAmt))}</b>을 ${mon}달(${monthsLater(mon)})에 모으려면
       매달 <b>${won(need)}</b>이 필요합니다. 지금은 <b>${won(now)}</b>이 남으니
       매달 <b>${won(gap)}</b>을 덜 써야 합니다.<br>`
       + (short
@@ -2298,14 +2401,162 @@ function renderGoal() {
   rest.forEach(a => box.appendChild(actionRow(a, null)));
 
   drawBench();
+  drawNowGoal();
+  drawTodos();
+  drawProgress();
 
   const lk = document.getElementById('leaks');
   lk.innerHTML = '';
+  const BILLS2 = new Set(['통신','보험','주거·관리비','대출원리금','대출이자','교육','의료·건강']);
   LEAKS.forEach(l => lk.appendChild(el('div','act-row',
     `<div class="top"><span class="cat">${esc(l.content)}</span>
        <span class="save">연 ${man(l.per_year)}</span></div>
-     <div class="from">${esc(l.category)} · 월 ${won(l.per_month)} · ${l.months}개월째</div>`)));
+     <div class="from">${esc(l.category)} · 월 ${won(l.per_month)} · ${l.months}개월째
+       · ${BILLS2.has(l.category) ? '<b>청구서</b> — 조건을 낮출 수 있는지' : '<b>구독</b> — 안 쓰면 끊기'}</div>`)));
   if (!LEAKS.length) lk.appendChild(el('p','note','매달 반복되는 결제가 없습니다.'));
+}
+
+/* ── 이번 달에 할 일.
+   '자유지출 165만 줄이세요'는 계획이 아니라 각오다. 이번 달에 할 수 있는
+   크기로 쪼개고, 누가 맡을지 정하고, 하면 눌러 두게 한다.
+   부부가 같이 쓰는 가계부라 '누가'가 특히 중요하다 — 둘 다의 일은 아무의
+   일도 아니다. */
+const WHOS = ['같이', ...(D.owners || [])];
+function todos() {
+  const out = [];
+  const got = benchRows();
+  const need = goalNeed(), now = BASE ? BASE.income - BASE.spend : 0;
+  const gap = need ? Math.max(need - now, 0) : 0;
+
+  /* ① 기준을 넘긴 것 중 줄일 수 있는 것. 한 번에 다 줄이라고 하지 않는다.
+        이번 달은 초과분의 3분의 1만 — 그래야 다음 달에도 한다. */
+  (got.rows || []).filter(r => !r.fixed && !r.floor && r.over > 100_000)
+    .sort((a,b) => b.over - a.over).slice(0, 2).forEach(r => {
+      const cut = Math.round(r.over / 3 / 10000) * 10000;
+      out.push({ id: 'cut:' + r.g, cat: r.g,
+        title: `${r.g} ${man(r.now)} → ${man(r.now - cut)}`,
+        save: cut,
+        how: `권장보다 ${man(r.over)} 많습니다. 한 번에 다 줄이면 오래 못 가니
+              이번 달은 <b>${man(cut)}</b>만 줄여 보세요. ${r.tip}` });
+    });
+
+  /* ② 매달 새는 돈. 한 번 끊으면 매달 효과가 난다 — 가장 값싼 승리다.
+        다만 통신비·보험료·관리비는 '새는 돈'이 아니라 살면서 내는 청구서다.
+        끊으라고 하면 안 되고, 낮출 수 있는지 보라고 해야 한다. */
+  const BILLS = new Set(['통신','보험','주거·관리비','대출원리금','대출이자','교육','의료·건강']);
+  const leak = (LEAKS || []).find(l => !BILLS.has(l.category));
+  const bill = (LEAKS || []).find(l => BILLS.has(l.category));
+  if (leak) out.push({
+    id: 'leak:' + leak.content, cat: '구독',
+    title: `${leak.content} 아직 쓰는지 확인`,
+    save: leak.per_month,
+    how: `${leak.months}달째 매달 <b>${won(leak.per_month)}</b>씩 나갑니다(1년 ${man(leak.per_year)}).
+          안 쓰면 끊고, 쓰면 그대로 두세요. 확인만 해도 됩니다.` });
+  else if (bill) out.push({
+    id: 'bill:' + bill.content, cat: bill.category,
+    title: `${bill.content} 한 단계 낮출 수 있는지`,
+    save: Math.round(bill.per_month * .2 / 1000) * 1000,
+    how: `${bill.months}달째 매달 <b>${won(bill.per_month)}</b>씩 나갑니다(1년 ${man(bill.per_year)}).
+          끊을 수 있는 돈은 아니지만 ${bill.category === '통신'
+            ? '요금제를 한 단계 낮추거나 알뜰폰으로 바꾸면'
+            : '조건을 다시 보면'} 매달 티가 납니다. 한 번만 확인해 보세요.` });
+
+  /* ③ 연금은 '아끼는' 게 아니라 '돌려받는' 것이라 효율이 제일 높다. */
+  const pension = taxVal('pension') + taxVal('irp');
+  if (pension < PENSION_CAP) {
+    const rate = taxVal('salary') > RATE_LINE ? RATE_LOW : RATE_HIGH;
+    const room = PENSION_CAP - pension;
+    out.push({ id: 'pension', cat: '절세',
+      title: '연금저축 자동이체 걸기',
+      save: 0,
+      how: `올해 <b>${won(room)}</b>이 비어 있습니다. 다 채우면 연말정산에서
+            <b>${won(Math.round(room * rate))}</b>을 돌려받습니다.
+            매달 ${won(Math.round(room/12))}씩 자동이체를 걸어 두면 신경 안 써도 됩니다.
+            아끼는 것보다 이게 먼저입니다.` });
+  }
+  return { list: out.slice(0, 3), gap };
+}
+
+function drawTodos() {
+  const { list, gap } = todos();
+  const box = document.getElementById('todos');
+  const note = document.getElementById('todoNote');
+  box.innerHTML = '';
+  if (!list.length) { box.appendChild(el('p','note','지금 손댈 것이 없습니다.')); note.textContent=''; return; }
+  mine.todo = mine.todo || {}; mine.who = mine.who || {};
+  list.forEach(t => {
+    const done = !!mine.todo[t.id];
+    const item = el('div','act-row' + (done ? ' edited' : ''),
+      `<div class="top"><span class="cat">${done ? '✓ ' : ''}${esc(t.title)}</span>
+         ${t.save ? `<span class="save">월 ${man(t.save)}</span>` : ''}</div>
+       <div class="how" style="margin-top:8px">${t.how}</div>`);
+    const acts = el('div','rowacts');
+    const chk = el('button','mark', done ? '했어요 ✓' : '했어요');
+    chk.setAttribute('aria-pressed', done ? 'true' : 'false');
+    chk.addEventListener('click', () => {
+      if (done) delete mine.todo[t.id]; else mine.todo[t.id] = 1;
+      persist(); drawTodos(); if (typeof drawSync === 'function') drawSync();
+    });
+    acts.appendChild(chk);
+    if (WHOS.length > 1) {
+      const sel = document.createElement('select');
+      ['맡을 사람', ...WHOS].forEach((w,i) => {
+        const o = document.createElement('option');
+        o.value = i ? w : ''; o.textContent = i ? w : '맡을 사람';
+        o.selected = (mine.who[t.id] || '') === o.value;
+        sel.appendChild(o);
+      });
+      sel.addEventListener('change', () => {
+        if (sel.value) mine.who[t.id] = sel.value; else delete mine.who[t.id];
+        persist(); drawTodos(); if (typeof drawSync === 'function') drawSync();
+      });
+      acts.appendChild(sel);
+    }
+    item.appendChild(acts);
+    box.appendChild(item);
+  });
+  const saved = list.filter(t => mine.todo[t.id]).reduce((a,t) => a + t.save, 0);
+  const total = list.reduce((a,t) => a + t.save, 0);
+  note.innerHTML = gap
+    ? `셋 다 하면 매달 <b>${won(total)}</b>이 생깁니다. 목표에 필요한 건
+       <b>${won(gap)}</b>입니다.` + (total >= gap
+         ? ' 이것만으로 닿습니다.' : ` ${won(gap - total)}은 「또래 기준」에서 더 찾아보세요.`)
+      + (saved ? `<br>지금까지 체크한 것만 해도 월 <b>${won(saved)}</b>입니다.` : '')
+    : `셋 다 하면 매달 <b>${won(total)}</b>이 생깁니다.`;
+}
+
+/* ── 우리 진도. 저축률 한 숫자보다 '몇 번 넘겼나'가 정직하다.
+   목표선을 넘긴 달과 못 넘긴 달이 눈에 보여야 다음 달에 할 말이 생긴다. */
+function drawProgress() {
+  const box = document.getElementById('progress');
+  const note = document.getElementById('progNote');
+  box.innerHTML = '';
+  if (!BASE) return;
+  const need = goalNeed();
+  const rows = BASE.months.map(m => {
+    const t = totals(m, false);
+    return { m, left: t.income - spent(t) };
+  });
+  const mx = Math.max(...rows.map(r => Math.abs(r.left)), need, 1);
+  rows.forEach(r => {
+    const ok = need ? r.left >= need : r.left > 0;
+    box.appendChild(el('div','bar-row',
+      `<div class="nm">${+r.m.slice(5)}월</div>
+       <div style="position:relative">
+         <div class="bar" style="width:${Math.max(Math.abs(r.left)/mx*100,2)}%;
+              background:${r.left < 0 ? 'var(--debt)' : ok ? 'var(--save)' : 'var(--spend)'}"></div>
+         ${need ? `<i style="position:absolute;top:-3px;bottom:-3px;left:${need/mx*100}%;
+            width:2px;background:var(--ink-2);opacity:.55"></i>` : ''}
+       </div>
+       <div class="vl num">${man(r.left)}</div>`));
+  });
+  const hit = rows.filter(r => need ? r.left >= need : r.left > 0).length;
+  note.innerHTML = need
+    ? `최근 ${rows.length}달 중 <b>${hit}달</b>이 목표(${won(need)})를 넘겼습니다.`
+      + (hit >= rows.length * .7 ? ' 이대로면 됩니다.'
+         : hit ? ' 넘긴 달에 무엇이 달랐는지 같이 보세요 — 그게 답입니다.'
+         : ' 한 달도 못 넘겼다면 목표가 지금 형편보다 큽니다. 기한을 늘리는 쪽이 낫습니다.')
+    : `최근 ${rows.length}달 중 <b>${hit}달</b>이 남았습니다. 위에서 목표를 정하면 목표선이 그려집니다.`;
 }
 
 /* 또래 기준 막대. 넘친 만큼을 빨갛게 얹어 보여준다 — 숫자 표보다
@@ -2380,6 +2631,12 @@ function drawPresets() {
 }
 
 function wireGoal(force) {
+  const why = document.getElementById('goalWhy');
+  if (why && !why.dataset.wired) {
+    why.dataset.wired = '1';
+    why.addEventListener('input', () => { mine.tax.goalWhy = why.value; persist(); renderGoal(); });
+  }
+  if (why && (force || !why.value)) why.value = mine.tax.goalWhy || '';
   [['goalAmt','goalAmt'], ['goalMon','goalMon']].forEach(([id, key]) => {
     const inp = document.getElementById(id);
     if (!inp.dataset.wired) {
@@ -3000,7 +3257,7 @@ document.getElementById('moreGroups').addEventListener('click', () => {
 });
 document.getElementById('resetEdits').addEventListener('click', () => {
   mine.cat = {}; mine.once = {}; mine.name = {}; mine.ok = {};
-  mine.add = []; persist(); refresh();
+  mine.todo = {}; mine.who = {}; mine.add = []; persist(); refresh();
 });
 
 /* ═══════════════════════════════════════════════════════════
@@ -3392,7 +3649,7 @@ document.getElementById('impFile').addEventListener('change', e => {
     try {
       const got = JSON.parse(rd.result);
       let n = 0;
-      ['cat','once','name','ok'].forEach(k => {
+      ['cat','once','name','ok','todo','who'].forEach(k => {
         if (got[k]) { Object.assign(mine[k], got[k]); n += Object.keys(got[k]).length; }
       });
       if (got.tax) Object.assign(mine.tax, got.tax);
