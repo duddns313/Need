@@ -530,21 +530,29 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
     </div>
 
     <div class="card">
-      <h2>이 달 쓴 돈 · 한도</h2>
+      <h2>이 달 쓸 수 있는 돈</h2>
       <div class="fig num" id="bFig"></div>
       <p class="note" id="bNote" style="margin:6px 0 0"></p>
       <div class="bars" id="bTotal" style="margin-top:14px"></div>
     </div>
 
     <div class="card">
-      <h2>항목별</h2>
-      <p class="sub">한도를 비워 두면 그 항목은 안 셉니다.
-        <b>최근 평균</b>을 눌러 넣고 거기서 줄여 잡으면 편합니다.</p>
+      <h2>한도 정하기</h2>
+      <p class="sub">조절할 수 있는 돈을 다섯으로만 묶었습니다. <b>만원 단위</b>로 적으세요.</p>
       <div id="caps"></div>
       <div class="rowacts" style="margin-top:14px">
-        <button class="chip" id="capFill">최근 평균으로 다 채우기</button>
-        <button class="chip" id="capClear">한도 다 지우기</button>
+        <button class="chip" id="capFill">평균으로 채우기</button>
+        <button class="chip" id="capClear">지우기</button>
       </div>
+    </div>
+
+    <div class="card">
+      <h2>못 줄이는 돈</h2>
+      <p class="sub">대출·집·통신·보험처럼 이미 정해진 돈입니다. 한도를 매기는 자리가 아니라
+        <b>얼마가 나가는지 알고 있으라고</b> 적어 둡니다.</p>
+      <div class="bars" id="bFixed"></div>
+      <details><summary>어디로 나가나</summary>
+        <div id="leaks"></div></details>
     </div>
 
     <div class="card">
@@ -552,12 +560,6 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
       <p class="sub">정해 둔 한도로 지난 달들을 되짚어 봅니다.</p>
       <div class="bars" id="bHist"></div>
       <p class="note" id="bHistNote" style="margin:12px 0 0"></p>
-    </div>
-
-    <div class="card">
-      <h2>매달 나가는 돈</h2>
-      <p class="sub">다달이 같은 곳으로 나가는 돈입니다. 한도를 정할 때 참고하세요.</p>
-      <div id="leaks"></div>
     </div>
 
   </section>
@@ -2124,48 +2126,60 @@ function renderList() {
 }
 
 /* ─────────────────────────────── 이 달 예산
-   항목마다 한 달에 얼마까지 쓸지 정해 두고, 지금 얼마나 썼는지만 본다.
-   앞서 이것저것 제안하는 화면을 만들었다가 걷어냈다 — 쓰는 사람이 정한
-   한도를 따라가는 것 말고는 군더더기다. */
+   스물한 개 항목에 한도를 매기게 했더니 아무도 못 쓴다. 사람이 머리에 담는
+   건 대여섯 개다. 그리고 대출 원리금·관리비·통신·보험은 이달에 줄일 수 있는
+   돈이 아니라서 한도를 매길 이유가 없다 — 그건 '얼마 나가는지 알고 있으면'
+   되는 돈이다.
+
+   조절할 수 있는 것만 다섯 묶음으로 모으고, 금액은 만원 단위로 받는다.
+   폰에서 '500000'을 치는 것과 '50'을 치는 것은 다른 일이다. */
+const BUCKETS = [
+  { id:'먹는 돈',  keys:['식료품','외식','배달','카페·간식'] },
+  { id:'사는 것',  keys:['쇼핑','생활용품'] },
+  { id:'타는 것',  keys:['교통','자동차'] },
+  { id:'노는 것',  keys:['문화·여가','여행·숙박','게임','구독료'] },
+  { id:'그 밖',    keys:['의료·건강','반려동물','경조·선물','교육','세금·기타',
+                         '개인송금','가족·용돈','미분류'] },
+];
+const FIXED_KEYS = ['주거·관리비','통신','보험','대출이자','대출원리금'];
+const BUCKET_OF = {};
+BUCKETS.forEach(b => b.keys.forEach(k => BUCKET_OF[k] = b.id));
+
 let bidx = -1;                       // 보고 있는 달 (-1 이면 마지막 달)
-const capOf = k => numIn((mine.cap || {})[k]);
+const MAN = 10000;
+const capOf = id => numIn((mine.cap || {})[id]) * MAN;   // 저장은 만원 단위
 const bMonth = () => {
   if (!MONTHS.length) return null;
   if (bidx < 0 || bidx >= MONTHS.length) bidx = MONTHS.length - 1;
   return MONTHS[bidx];
 };
 
-/* 그 달에 항목마다 얼마 썼나. 한도를 정할 만한 항목만 추린다. */
+/* 그 달에 묶음마다 얼마 썼나 */
 function spendOf(m) {
-  const bag = {};
+  const bag = {}, fixed = {};
   for (const r of ROWS) {
     const n = natOf(r);
     if ((n !== FIXED && n !== VARIABLE) || monthOf(r) !== m) continue;
-    bag[catOf(r)] = (bag[catOf(r)] || 0) + r.a;
+    const k = catOf(r), b = BUCKET_OF[k];
+    if (b) bag[b] = (bag[b] || 0) + r.a;
+    else fixed[k] = (fixed[k] || 0) + r.a;
   }
-  return bag;
+  return { bag, fixed };
 }
 
-/* 최근 여섯 달 평균. 한도를 처음 정할 때 기준으로 쓴다 — 남의 평균이 아니라
+/* 최근 여섯 달 평균 — 한도를 처음 정할 때 기준. 남의 평균이 아니라
    두 분이 실제로 쓴 돈이라 시작점으로 삼기에 낫다. */
 function avgOf() {
-  const ms = MONTHS.slice(-6);
+  const ms = MONTHS.slice(-6).filter(m => !isPartial(m));
   const bag = {};
   for (const r of ROWS) {
     const n = natOf(r);
     if ((n !== FIXED && n !== VARIABLE) || !ms.includes(monthOf(r))) continue;
-    bag[catOf(r)] = (bag[catOf(r)] || 0) + r.a;
+    const b = BUCKET_OF[catOf(r)];
+    if (b) bag[b] = (bag[b] || 0) + r.a;
   }
-  Object.keys(bag).forEach(k => bag[k] = Math.round(bag[k] / (ms.length || 1)));
+  BUCKETS.forEach(b => bag[b.id] = Math.round((bag[b.id] || 0) / (ms.length || 1)));
   return bag;
-}
-
-/* 한도를 매길 항목: 최근에 실제로 쓴 것 + 이미 한도를 정해 둔 것 */
-function capCats() {
-  const avg = avgOf(), caps = mine.cap || {};
-  const set = new Set([...Object.keys(avg).filter(k => avg[k] >= 10000),
-                       ...Object.keys(caps)]);
-  return [...set].sort((a,b) => (avg[b]||0) - (avg[a]||0));
 }
 
 function renderBudget() {
@@ -2175,34 +2189,28 @@ function renderBudget() {
   document.getElementById('bPrev').disabled = bidx <= 0;
   document.getElementById('bNext').disabled = bidx >= MONTHS.length - 1;
 
-  const spent = spendOf(m), avg = avgOf(), cats = capCats();
-  const capped = cats.filter(k => capOf(k) > 0);
-  const capSum = capped.reduce((a,k) => a + capOf(k), 0);
-  const useSum = capped.reduce((a,k) => a + (spent[k] || 0), 0);
-  const allSum = Object.values(spent).reduce((a,v) => a + v, 0);
-
-  /* 이 달이 아직 안 끝났으면 '이 속도면 월말에 얼마'가 더 쓸모 있다. */
+  const { bag, fixed } = spendOf(m), avg = avgOf();
+  const capSum = BUCKETS.reduce((a,b) => a + capOf(b.id), 0);
+  const useSum = BUCKETS.reduce((a,b) => a + (bag[b.id] || 0), 0);
   const part = isPartial(m) ? PARTIAL : null;
   const pace = part ? Math.round(useSum / part.have * part.days) : useSum;
 
   const fig = document.getElementById('bFig');
   const note = document.getElementById('bNote');
   if (!capSum) {
-    fig.innerHTML = wonf(allSum);
+    fig.innerHTML = wonf(useSum);
     fig.style.color = 'var(--spend)';
-    note.innerHTML = '아직 한도를 안 정하셨습니다. 아래에서 항목마다 정해 주세요 — '
-      + '<b>최근 평균으로 다 채우기</b>를 누르고 줄이고 싶은 것만 낮추면 빠릅니다.';
+    note.innerHTML = '이 달 <b>조절할 수 있는 돈</b>으로 쓴 금액입니다. '
+      + '아래에서 한도를 정하면 얼마 남았는지 보여 드립니다.';
     document.getElementById('bTotal').innerHTML = '';
   } else {
     const left = capSum - useSum;
     fig.innerHTML = wonf(Math.abs(left));
     fig.style.color = left >= 0 ? 'var(--save)' : 'var(--debt)';
-    note.innerHTML = `한도 <b>${won(capSum)}</b> 중 <b>${won(useSum)}</b> 썼습니다 — `
-      + (left >= 0 ? `<b>${won(left)}</b> 남았습니다.` : `<b>${won(-left)}</b> 넘었습니다.`)
-      + (part ? `<br>아직 ${part.have}일까지입니다. 이 속도면 월말에 <b>${won(pace)}</b> —
-                 ${pace > capSum ? `한도를 <b>${won(pace-capSum)}</b> 넘깁니다.` : '한도 안에 듭니다.'}` : '')
-      + (capped.length < cats.length
-         ? `<br><span style="color:var(--muted)">한도를 안 정한 항목에 ${won(allSum-useSum)}을 더 썼습니다.</span>` : '');
+    note.innerHTML = (left >= 0 ? '남았습니다. ' : '넘었습니다. ')
+      + `한도 <b>${won(capSum)}</b> 중 <b>${won(useSum)}</b> 썼습니다.`
+      + (part ? `<br>아직 ${part.have}일까지입니다. 이 속도면 월말에 <b>${won(pace)}</b>
+                 — ${pace > capSum ? `<b>${won(pace-capSum)}</b> 넘깁니다.` : '한도 안에 듭니다.'}` : '');
     const mx = Math.max(capSum, useSum, 1);
     document.getElementById('bTotal').innerHTML =
       `<div class="bar-row"><div class="nm">쓴 돈</div>
@@ -2212,71 +2220,78 @@ function renderBudget() {
            <i style="position:absolute;top:-3px;bottom:-3px;left:${capSum/mx*100}%;
               width:2px;background:var(--ink-2);opacity:.55"></i>
          </div>
-         <div class="vl num">${man(useSum)}</div></div>
-       <div class="bar-row"><div class="nm">한도</div>
-         <div><div class="bar" style="width:${capSum/mx*100}%;background:var(--chip)"></div></div>
-         <div class="vl num">${man(capSum)}</div></div>`;
+         <div class="vl num">${man(useSum)}</div></div>`;
   }
 
+  /* 묶음마다 한 줄. 누르면 그 달에 그 묶음으로 나간 거래를 다 보여준다. */
   const box = document.getElementById('caps');
   box.innerHTML = '';
-  if (!cats.length) { box.appendChild(el('p','note','아직 쓴 기록이 모자랍니다.')); return; }
-  cats.forEach(k => {
-    const cap = capOf(k), use = spent[k] || 0, a = avg[k] || 0;
+  BUCKETS.forEach(b => {
+    const cap = capOf(b.id), use = bag[b.id] || 0, a = avg[b.id] || 0;
     const over = cap > 0 && use > cap;
     const item = el('div','item' + (over ? ' over' : ''),
-      `<div class="top"><span class="nm2">${esc(k)}</span>
+      `<div class="top"><span class="nm2">${esc(b.id)}</span>
          <span class="amt num" style="color:${over ? 'var(--act)' : 'var(--ink)'}">${won(use)}</span></div>
        <div class="why">${cap > 0
-         ? (over ? `한도 ${won(cap)}보다 <b style="color:var(--act)">${won(use-cap)} 넘음</b>`
-                 : `한도 ${won(cap)} · <b>${won(cap-use)}</b> 남음`)
-         : `한도를 안 정했습니다 · 최근 평균 ${won(a)}`}</div>
-       ${cap > 0 ? `<div class="bars" style="margin-top:8px"><div class="bar-row">
-            <div class="nm"></div>
-            <div><div class="bar" style="width:${Math.min(use/cap*100,100)}%;
-                 background:${over ? 'var(--act)' : 'var(--spend)'}"></div></div>
-            <div class="vl num">${Math.round(use/cap*100)}%</div></div></div>` : ''}`);
+         ? (over ? `한도보다 <b style="color:var(--act)">${won(use-cap)} 넘음</b>`
+                 : `<b>${won(cap-use)}</b> 남음`)
+         : `최근 평균 ${won(a)}`}</div>
+       ${cap > 0 ? `<div style="margin-top:8px;height:8px;border-radius:99px;
+            background:var(--line);overflow:hidden">
+            <div style="height:100%;width:${Math.min(use/cap*100,100)}%;border-radius:99px;
+                 background:${over ? 'var(--act)' : 'var(--spend)'}"></div></div>` : ''}`);
+
     const acts = el('div','rowacts');
     const wrap = el('div','unit');
     wrap.style.cssText = 'flex:1';
     const inp = document.createElement('input');
     inp.type = 'text'; inp.inputMode = 'numeric';
-    inp.placeholder = a ? `평균 ${a.toLocaleString('ko-KR')}` : '한도';
-    inp.value = cap ? cap.toLocaleString('ko-KR') : '';
-    inp.setAttribute('aria-label', k + ' 한도');
+    inp.placeholder = a ? `평균 ${Math.round(a/MAN)}` : '한도';
+    inp.value = cap ? String(Math.round(cap/MAN)) : '';
+    inp.setAttribute('aria-label', b.id + ' 한 달 한도 (만원)');
     inp.addEventListener('input', () => {
       const n = numIn(inp.value);
       mine.cap = mine.cap || {};
-      if (n) mine.cap[k] = String(n); else delete mine.cap[k];
-      inp.value = n ? n.toLocaleString('ko-KR') : '';
+      if (n) mine.cap[b.id] = String(n); else delete mine.cap[b.id];
+      inp.value = n ? String(n) : '';
       persist(); renderBudget(); if (typeof drawSync === 'function') drawSync();
     });
-    const won_ = document.createElement('span'); won_.textContent = '원';
-    wrap.appendChild(inp); wrap.appendChild(won_);
+    const unit = document.createElement('span'); unit.textContent = '만원';
+    wrap.appendChild(inp); wrap.appendChild(unit);
     acts.appendChild(wrap);
-    if (a) {
-      const b = el('button','mark','평균');
-      b.addEventListener('click', () => {
-        mine.cap = mine.cap || {}; mine.cap[k] = String(a);
-        persist(); renderBudget(); if (typeof drawSync === 'function') drawSync();
-      });
-      acts.appendChild(b);
-    }
+    const look = el('button','mark','내역');
+    look.addEventListener('click', () => openDetail({
+      title: b.id, scope: `${m.slice(0,4)}년 ${+m.slice(5)}월`,
+      rows: pick(r => BUCKET_OF[catOf(r)] === b.id, m) }));
+    acts.appendChild(look);
     item.appendChild(acts);
     box.appendChild(item);
   });
 
-  /* 지난 달들 — 정해 둔 한도로 되짚어 본다 */
+  /* 못 줄이는 돈 — 한도 없이 얼마 나가는지만 */
+  const fx = document.getElementById('bFixed');
+  const rows = FIXED_KEYS.map(k => [k, fixed[k] || 0]).filter(([,v]) => v > 0);
+  const fmx = Math.max(...rows.map(([,v]) => v), 1);
+  fx.innerHTML = rows.length
+    ? rows.sort((x,y) => y[1]-x[1]).map(([k,v]) =>
+        `<div class="bar-row"><div class="nm">${esc(k)}</div>
+           <div><div class="bar" style="width:${Math.max(v/fmx*100,2)}%;background:var(--chip)"></div></div>
+           <div class="vl num">${man(v)}</div></div>`).join('')
+      + `<div class="bar-row" style="margin-top:4px"><div class="nm"><b>합계</b></div>
+           <div></div><div class="vl num"><b>${man(rows.reduce((a,[,v])=>a+v,0))}</b></div></div>`
+    : '<p class="note">이 달은 없습니다.</p>';
+
+  /* 지난 달들 */
   const hist = document.getElementById('bHist');
   const hnote = document.getElementById('bHistNote');
   hist.innerHTML = '';
-  if (!capSum) { hnote.textContent = ''; return; }
-  const rows = MONTHS.map(mm => {
-    const sp = spendOf(mm);
-    return { m: mm, used: capped.reduce((a,k) => a + (sp[k] || 0), 0) };
+  if (!capSum) { hnote.textContent = '한도를 정하면 지난 달들을 되짚어 봅니다.'; return; }
+  const hrows = MONTHS.map(mm => {
+    const g = spendOf(mm).bag;
+    return { m: mm, used: BUCKETS.reduce((a,b) => a + (g[b.id] || 0), 0) };
   });
-  const mx2 = Math.max(...rows.map(r => r.used), capSum, 1);
-  rows.forEach(r => {
+  const mx2 = Math.max(...hrows.map(r => r.used), capSum, 1);
+  hrows.forEach(r => {
     const over = r.used > capSum, part2 = isPartial(r.m);
     hist.appendChild(el('div','bar-row',
       `<div class="nm">${+r.m.slice(5)}월${part2 ? ' *' : ''}</div>
@@ -2288,13 +2303,13 @@ function renderBudget() {
        </div>
        <div class="vl num">${man(r.used)}</div>`));
   });
-  const whole = rows.filter(r => !isPartial(r.m));
+  const whole = hrows.filter(r => !isPartial(r.m));
   const ok = whole.filter(r => r.used <= capSum).length;
   hnote.innerHTML = `지금 한도(<b>${won(capSum)}</b>)로 보면 최근 ${whole.length}달 중 `
     + `<b>${ok}달</b>이 한도 안에 들었습니다.`
-    + (ok === 0 ? ' 한 달도 못 지켰다면 한도가 형편보다 빡빡합니다. 평균에 가깝게 올려 잡으세요.'
-       : ok === whole.length ? ' 여유가 있으면 한 단계 낮춰 잡아 보세요.' : '')
-    + (rows.some(r => isPartial(r.m)) ? ' (*는 아직 안 끝난 달)' : '');
+    + (ok === 0 ? ' 한 달도 못 지켰다면 한도가 빡빡합니다. 평균에 가깝게 올려 잡으세요.'
+       : ok === whole.length ? ' 여유가 있으면 한 단계 낮춰 보세요.' : '')
+    + (hrows.some(r => isPartial(r.m)) ? ' (*는 아직 안 끝난 달)' : '');
 }
 
 document.getElementById('bPrev').addEventListener('click', () => {
@@ -2304,7 +2319,7 @@ document.getElementById('bNext').addEventListener('click', () => {
 document.getElementById('capFill').addEventListener('click', () => {
   const avg = avgOf();
   mine.cap = mine.cap || {};
-  capCats().forEach(k => { if (avg[k]) mine.cap[k] = String(avg[k]); });
+  BUCKETS.forEach(b => { if (avg[b.id]) mine.cap[b.id] = String(Math.round(avg[b.id]/MAN)); });
   persist(); renderBudget(); if (typeof drawSync === 'function') drawSync();
 });
 document.getElementById('capClear').addEventListener('click', () => {
