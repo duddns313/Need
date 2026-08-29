@@ -553,6 +553,18 @@ REFUND_DAYS = 90
 REFUND_MIN = 1_000
 
 
+def _same_shop(a: str, b: str) -> bool:
+    """같은 곳인가. '김병인(인정산후조리원)'과 '김병인(인정산후조리'처럼
+    한쪽이 잘려 들어오는 일이 잦아서 앞부분이 겹치면 같은 곳으로 본다."""
+    a, b = (a or '').strip(), (b or '').strip()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    return len(short) >= 4 and long_.startswith(short)
+
+
 def detect_refund_pairs(transactions) -> list[dict]:
     """환불이 잡혔으면 그 환불을 만든 결제도 같이 뺀다.
 
@@ -563,8 +575,14 @@ def detect_refund_pairs(transactions) -> list[dict]:
     한 번 짝지은 결제는 다시 안 쓴다. 짝을 못 찾은 환불은 건드리지 않는다 —
     일부만 돌려받았거나 결제가 파일 기간 밖일 수 있어서 함부로 지우면 안 된다.
     """
+    # 환불로 분류된 것 + '들어왔는데 이름이 지난 결제와 같은 것'.
+    # 뒤쪽이 중요하다. 산후조리원에 낸 19만원이 보름 뒤 같은 이름으로
+    # 돌아왔는데, 들어온 쪽은 부수입, 나간 쪽은 의료비로 양쪽 다 살아 있었다.
+    # 이름까지 같으면 환불로 봐도 된다 — 우연히 같은 금액이 오간 게 아니다.
     backs = [t for t in transactions
-             if t.category == '환불·취소' and t.amount >= REFUND_MIN]
+             if t.amount >= REFUND_MIN
+             and (t.category == '환불·취소'
+                  or (t.inflow and t.category in ('부수입', '금융소득')))]
     if not backs:
         return []
     buys = [t for t in transactions
@@ -574,12 +592,15 @@ def detect_refund_pairs(transactions) -> list[dict]:
     for back in sorted(backs, key=lambda t: -t.amount):
         # 이름까지 같은 짝을 먼저 찾는다. 금액만 보고 고르면 같은 값의 엉뚱한
         # 결제가 걸린다 — 가승인은 이름이 똑같이 남으므로 이 순서가 중요하다.
+        # 이름이 안 맞으면 환불로 안 본다 — 부수입까지 넣었기 때문에,
+        # 금액만 같다고 묶으면 멀쩡한 부수입이 지워진다.
+        loose = back.category == '환불·취소'
         best, gap = None, 10 ** 9
-        for same_name in (True, False):
+        for same_name in ((True, False) if loose else (True,)):
             for buy in buys:
                 if id(buy) in used or buy.amount != back.amount:
                     continue
-                if same_name and (buy.content or '') != (back.content or ''):
+                if same_name and not _same_shop(buy.content, back.content):
                     continue
                 days = (back.date - buy.date).days
                 if 0 <= days <= REFUND_DAYS and days < gap:
@@ -589,9 +610,10 @@ def detect_refund_pairs(transactions) -> list[dict]:
         if best is None:
             continue
         used.add(id(best))
-        best.category = '결제취소'
-        best.nature = cat.EXCLUDED
-        best.rule = 'refund-pair'
+        for tx in ((best,) if loose else (best, back)):
+            tx.category = '결제취소'
+            tx.nature = cat.EXCLUDED
+            tx.rule = 'refund-pair'
         pairs.append({
             'amount': back.amount, 'paid': best.date.isoformat(),
             'back': back.date.isoformat(), 'content': best.content,

@@ -45,17 +45,34 @@ def offset_spouse_transfers(transactions, names, date_tolerance=DEFAULT_DATE_TOL
     return pairs
 
 
+def _aliases(owner, names):
+    """그 사람을 가리키는 말들. 실명과 파일에 붙인 이름을 함께 본다.
+
+    부부끼리는 서로를 실명으로 안 적는다. 실제 파일에서 20만원짜리 두 건이
+    '호현이월용' → '호현인최고야!' 로 오갔는데, 실명('이호현')만 찾다가
+    양쪽 다 못 잡아 한쪽은 지출, 한쪽은 부수입으로 남아 있었다.
+    성을 뗀 이름('호현')이면 충분히 특정된다.
+    """
+    got = []
+    real = names.get(owner, '')
+    if real:
+        got.append(real)
+        if len(real) >= 3:
+            got.append(real[1:])       # 이호현 -> 호현
+    if owner:
+        got.append(owner)              # 파일에 붙인 이름 자체
+    return [g for g in got if len(g) >= 2]
+
+
 def _looks_like_spouse_transfer(out, inc, names) -> bool:
     """금액·날짜가 맞아도, 상대 이름이나 이체성 단서가 있어야 상계한다.
 
     이 조건이 없으면 '같은 날 같은 금액'이라는 이유로 남남인 거래가 묶인다.
     """
-    receiver_name = names.get(inc.owner, '')
-    sender_name = names.get(out.owner, '')
     text = f'{out.content} {inc.content}'
-    if receiver_name and receiver_name in out.content:
+    if any(a in out.content for a in _aliases(inc.owner, names)):
         return True
-    if sender_name and sender_name in inc.content:
+    if any(a in inc.content for a in _aliases(out.owner, names)):
         return True
     return any(k in text for k in ('이체', '송금', '생활비', '용돈', '정산', '보냄', '입금'))
 
