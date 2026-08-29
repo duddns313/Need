@@ -11,6 +11,7 @@ PC 없이 쓰고 싶다는 요구에서 나온 도구다. 뱅샐 엑셀을 넣�
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import sys
 from pathlib import Path
@@ -24,6 +25,8 @@ from budget.app import (  # noqa: E402
 
 TEMPLATE = ROOT / 'design' / 'artifact_template.html'
 PLACEHOLDER = '__DATA__'
+SAVED_MARK = '__SAVED__'      # 사용자가 화면에서 확정한 것 (기기 사이를 잇는 자리)
+SELF_MARK = '__SELFTPL__'     # 스스로 새 버전을 만들 때 쓸 원본 서식
 
 FOOD = ['식료품', '외식', '배달', '카페·간식']
 
@@ -188,6 +191,30 @@ def rows_of(txs) -> list[dict]:
     return out
 
 
+def render(payload: str, saved_path=None) -> str:
+    """서식에 자료와 '저장해 둔 결정'을 끼워 넣어 화면 파일을 만든다.
+
+    화면이 스스로 새 버전을 발행할 수 있어야 해서(기기 사이 맞추기), 원본 서식을
+    통째로 실어 보낸다. 발행할 때 그 서식에 다시 끼워 넣는 식이라 서식이
+    자기 자신을 담는 무한 되풀이가 생기지 않는다.
+
+    saved_path 를 주면 그 내용을 박아 넣는다. 앱을 고쳐 다시 구울 때 사용자가
+    화면에서 해 둔 결정을 덮어쓰지 않으려고 있는 자리다 —
+    안 넘기면 저장해 둔 것이 날아간다.
+    """
+    tpl = TEMPLATE.read_text(encoding='utf-8')
+    for mark in (PLACEHOLDER, SAVED_MARK, SELF_MARK):
+        if mark not in tpl:
+            raise SystemExit(f'서식 파일에 {mark} 자리가 없습니다: {TEMPLATE}')
+    saved = '{}'
+    if saved_path:
+        saved = Path(saved_path).read_text(encoding='utf-8').strip() or '{}'
+        json.loads(saved)          # 깨진 JSON을 화면에 박아 넣지 않는다
+    out = tpl.replace(PLACEHOLDER, payload)
+    out = out.replace(SAVED_MARK, saved)
+    return out.replace(SELF_MARK, base64.b64encode(tpl.encode('utf-8')).decode('ascii'))
+
+
 def build(txs, wealth, owner_label: str) -> dict:
     dates = [t.date for t in txs]
     return {
@@ -211,6 +238,8 @@ def main() -> int:
     ap.add_argument('--json', default=None, help='데이터만 따로 저장할 경로')
     ap.add_argument('--pay', nargs='*', default=[],
                     help='네이버페이 카드영수증 · 카카오페이 거래내역서 엑셀')
+    ap.add_argument('--saved', default=None,
+                    help='화면에서 저장해 둔 결정(JSON). 새로 구울 때 이어 붙인다')
     args = ap.parse_args()
 
     owners = args.owners or ['남편', '아내'][:len(args.files)]
@@ -225,10 +254,7 @@ def main() -> int:
     # </script> 가 데이터 안에 들어가면 스크립트 태그가 거기서 끊긴다.
     payload = payload.replace('</', '<\\/')
 
-    html = TEMPLATE.read_text(encoding='utf-8')
-    if PLACEHOLDER not in html:
-        raise SystemExit(f'서식 파일에 {PLACEHOLDER} 자리가 없습니다: {TEMPLATE}')
-    Path(args.out).write_text(html.replace(PLACEHOLDER, payload), encoding='utf-8')
+    Path(args.out).write_text(render(payload, args.saved), encoding='utf-8')
 
     if args.json:
         Path(args.json).write_text(
