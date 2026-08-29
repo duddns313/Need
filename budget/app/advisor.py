@@ -20,7 +20,12 @@ from collections import defaultdict
 
 from . import aggregate, categories as cat
 
-RECENT = 6               # 최근 몇 달로 '지금 수준'을 볼지
+RECENT = 12              # 최근 몇 달로 '지금 수준'을 볼지 — 1년을 본다.
+#   6달 가운뎃값을 쓰다가 크게 틀렸다. 성과급은 1년에 한두 번 들어오는데
+#   가운뎃값은 그걸 통째로 빼먹는다. 반대로 지출은 큰 달이 가운데에 걸린다.
+#   그 결과 실제로는 1년에 +1.8%인 집이 화면에서는 -19%로 나왔다.
+#   한 달짜리 사건(대출실행·만기수령·카드대금)은 이제 카테고리에서 빠지므로
+#   가운뎃값으로 막을 이유도 없어졌다. 1년 평균이 진실에 가깝다.
 GOOD_MONTHS = 3          # 처방 기준: 잘한 달 몇 개의 중앙값
 MIN_MONTHS = 3           # 이만큼은 있어야 말을 할 수 있다
 
@@ -83,10 +88,16 @@ def whole_months(transactions, months=None) -> list[str]:
 
 
 def baseline(transactions, months=None) -> dict:
-    """'평소 한 달' 수준. 평균이 아니라 중앙값을 쓴다.
+    """'한 달 수준'. 최근 1년을 통으로 더해 열두 달로 나눈다.
 
-    평균은 대출 실행이나 이사처럼 한 달짜리 사건에 통째로 끌려간다.
-    중앙값은 안 끌려간다. 가계에서 알고 싶은 건 '보통 달'이다.
+    처음엔 6달 중앙값을 썼다. 한 달짜리 사건에 안 끌려간다는 게 이유였는데,
+    그 사건들(대출실행·만기수령·카드대금)은 이제 카테고리에서 아예 빠지므로
+    막을 이유가 없어졌다. 남은 건 중앙값의 부작용뿐이었다 — 성과급은 1년에
+    한두 번 들어오는데 중앙값이 그걸 통째로 빼먹는다. 실제 부부 파일에서
+    1년에 +1.8% 남는 집이 화면에서 -19%로 나왔다. 21%p가 방법 탓이었다.
+
+    가전처럼 한 번 사는 큰 돈도 1년으로 나누면 제 몫만큼만 반영된다.
+    중앙값은 '보통수입/보통지출'로 함께 돌려준다.
     """
     months = months or whole_months(transactions)
     recent = months[-RECENT:] if len(months) > RECENT else months
@@ -94,13 +105,18 @@ def baseline(transactions, months=None) -> dict:
         return {}
 
     rows = [aggregate.summary(transactions, m) for m in recent]
+    n = len(rows)
+    avg = lambda key: sum(r[key] for r in rows) / n
     med = lambda key: st.median(r[key] for r in rows)
-    income, spend = med('수입'), med('지출')
+    income, spend = avg('수입'), avg('지출')
     return {
         'months': recent,
         '수입': _r(income), '지출': _r(spend),
-        '고정비': _r(med('고정비')), '변동비': _r(med('변동비')),
-        '저축투자': _r(med('저축투자')),
+        '고정비': _r(avg('고정비')), '변동비': _r(avg('변동비')),
+        '저축투자': _r(avg('저축투자')),
+        # 가운뎃값도 같이 넘긴다. '보통 달은 어떤가'는 여전히 궁금한 값이고,
+        # 평균과 크게 벌어지면 그 자체가 알려줄 만한 사실이다.
+        '보통수입': _r(med('수입')), '보통지출': _r(med('지출')),
         '남는 돈': _r(income - spend),
         '저축률': round((income - spend) / income, 4) if income else 0.0,
     }
@@ -129,7 +145,7 @@ def health(transactions, liquid=None) -> list[dict]:
         'key': 'saving', 'label': '저축률',
         'value': rate, 'display': f'{rate*100:.0f}%',
         'verdict': _verdict(rate, SAVING_GOOD, SAVING_WATCH),
-        'note': f"보통 달에 {base['수입']:,}원 벌어 {base['지출']:,}원 씁니다.",
+        'note': f"1년 기준 한 달에 {base['수입']:,}원 벌어 {base['지출']:,}원 씁니다.",
         'target': f'{SAVING_GOOD*100:.0f}% 이상이면 좋습니다.',
     })
 

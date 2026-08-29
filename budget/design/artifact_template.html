@@ -265,8 +265,9 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
     <p class="lede" id="homeLede"></p>
 
     <div class="card">
-      <h2>보통 한 달에 남는 돈</h2>
+      <h2>한 달에 남는 돈</h2>
       <p class="sub" id="baseNote"></p>
+      <p class="note" id="baseSwing" style="margin:-4px 0 12px" hidden></p>
       <div class="fig num" id="baseLeft"></div>
       <div class="trio">
         <div class="t-in"><div class="k">번 돈</div><div class="v num" id="baseIn"></div></div>
@@ -861,18 +862,26 @@ const spent = t => t.fixed + t.variable;
 
 /* ── 평소 한 달. 평균이 아니라 가운뎃값이다.
       평균은 이사나 대출 같은 한 달짜리 사건에 통째로 끌려간다. */
-const RECENT = 6, GOOD_MONTHS = 3, MIN_MONTHS = 3;
+/* 1년을 본다. 6달 가운뎃값을 쓰다가 크게 틀렸다 — 성과급은 1년에 한두 번
+   들어오는데 가운뎃값은 그걸 통째로 빼먹고, 지출은 큰 달이 가운데에 걸린다.
+   실제로 1년에 +1.8%인 집이 화면에서는 -19%로 나왔다. 한 달짜리 사건은 이제
+   카테고리에서 빠지므로 가운뎃값으로 막을 이유도 없어졌다. */
+const RECENT = 12, GOOD_MONTHS = 3, MIN_MONTHS = 3;
 const recentMonths = () => wholeMonths().slice(-RECENT);
 
 function baseline() {
   const ms = recentMonths();
   if (!ms.length) return null;
   const rows = ms.map(m => PER[m]);
+  const avg = f => rows.reduce((a,r) => a + f(r), 0) / rows.length;
   const med = f => median(rows.map(f));
-  const income = med(p => p.income), sp = med(p => p.fixed + p.variable);
+  const income = avg(p => p.income), sp = avg(p => p.fixed + p.variable);
   return {
     months: ms, income, spend: sp,
-    fixed: med(p => p.fixed), variable: med(p => p.variable), saving: med(p => p.saving),
+    fixed: avg(p => p.fixed), variable: avg(p => p.variable), saving: avg(p => p.saving),
+    /* 가운뎃값도 같이 들고 있는다. 평균과 크게 벌어지면 그 자체가 알려줄
+       만한 사실이다 — 들쭉날쭉하다는 뜻이니까. */
+    medIncome: med(p => p.income), medSpend: med(p => p.fixed + p.variable),
     left: income - sp, rate: income ? (income - sp) / income : 0,
   };
 }
@@ -909,7 +918,7 @@ function health() {
   const out = [];
   out.push({ key:'saving', label:'저축률', display:(BASE.rate*100).toFixed(0)+'%',
     verdict: verdictOf(BASE.rate, SAVING_GOOD, SAVING_WATCH, true),
-    note:`보통 달에 ${won(BASE.income)} 벌어 ${won(BASE.spend)} 씁니다.`,
+    note:`1년 기준 한 달에 ${won(BASE.income)} 벌어 ${won(BASE.spend)} 씁니다.`,
     target:'30% 이상이면 좋습니다.' });
 
   /* 비상금은 저축률보다 먼저 봐야 하는 숫자다. 저축률이 아무리 높아도
@@ -1289,9 +1298,21 @@ function renderHome() {
   document.getElementById('homeLede').textContent =
     `${D.range[0]} ~ ${D.range[1]} · 거래 ${ROWS.length.toLocaleString('ko-KR')}건`;
   if (!BASE) return;
-  document.getElementById('baseNote').textContent =
-    `최근 ${BASE.months.length}달(${BASE.months[0]} ~ ${BASE.months[BASE.months.length-1]})의 가운뎃값입니다. `
-    + '이사나 대출처럼 한 달짜리 사건에 끌려가지 않도록 평균 대신 가운뎃값을 씁니다.';
+  /* 성과급은 1년에 한두 번 들어온다. 여섯 달만 보거나 가운뎃값을 쓰면 그게
+     통째로 빠져서, 실제로는 남는 집이 적자로 보인다. 1년을 통으로 본다. */
+  document.getElementById('baseNote').innerHTML =
+    `최근 <b>${BASE.months.length}달</b>(${BASE.months[0]} ~ ${BASE.months[BASE.months.length-1]})을
+     통으로 더해 열두 달로 나눈 값입니다. 성과급처럼 1년에 한두 번 들어오는 돈과
+     가전처럼 한 번 사는 큰 돈을 <b>양쪽 다</b> 제대로 세려면 1년을 봐야 합니다.`;
+  /* 평균과 가운뎃값이 크게 벌어지면 그 자체가 알려줄 만한 사실이다. */
+  const gap = document.getElementById('baseSwing');
+  const dm = BASE.medSpend - BASE.spend, di = BASE.medIncome - BASE.income;
+  const wobbly = Math.abs(dm) > BASE.spend * .08 || Math.abs(di) > BASE.income * .08;
+  gap.hidden = !wobbly;
+  if (wobbly) gap.innerHTML =
+    `달마다 들쭉날쭉합니다. 딱 가운데 달만 보면 <b>${won(BASE.medIncome)}</b> 벌어
+     <b>${won(BASE.medSpend)}</b> 쓰는데, 1년으로 보면 위 숫자입니다.
+     ${di < 0 ? '성과급이 있는 달이 위로 끌어올립니다.' : ''}`;
   const left = document.getElementById('baseLeft');
   left.innerHTML = wonf(BASE.left);
   left.style.color = BASE.left >= 0 ? 'var(--save)' : 'var(--debt)';
@@ -1952,7 +1973,7 @@ function renderGoal() {
     }
     const short = Math.max(gap - covered, 0);
     v.className = 'verdict ' + (short ? 'no' : 'ok');
-    v.innerHTML = `보통 달에 <b>${won(BASE.income)}</b> 벌어 <b>${won(BASE.spend)}</b> 씁니다.<br>
+    v.innerHTML = `1년 기준 한 달에 <b>${won(BASE.income)}</b> 벌어 <b>${won(BASE.spend)}</b> 씁니다.<br>
       저축률 <b>${goalRate}%</b>를 만들려면 매달 <b>${won(gap)}</b>을 덜 써야 합니다.<br>`
       + (short
         ? `아래에서 <b>${won(covered)}</b>까지는 가능하고 <b>${won(short)}</b>이 모자랍니다.
@@ -2270,7 +2291,7 @@ function renderAllocate() {
     note:'전부 아끼는 계획은 한 달도 못 갑니다. 마음 편히 쓰라고 먼저 떼어 둔 돈입니다.' });
 
   box.innerHTML = `<div class="fig num" style="font-size:26px;color:var(--save)">${wonf(spare)}</div>
-    <p class="note" style="margin:0 0 12px">보통 달에 남는 돈입니다.</p>`;
+    <p class="note" style="margin:0 0 12px">1년 기준 한 달에 남는 돈입니다.</p>`;
   plan.forEach(p => box.appendChild(el('div','act-row',
     `<div class="top"><span class="cat">${p.label}</span>
        <span class="save">${won(p.amount)}</span></div>
