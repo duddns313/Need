@@ -68,7 +68,9 @@ def load(paths_and_owners, pay_files=()) -> tuple[list, dict]:
     # 안 그러면 같은 결제가 두 거래에 각각 붙어 엉뚱한 이름이 생긴다.
     receipts, seen = [], set()
     for path in pay_files or ():
-        got = payexport.parse(path)
+        # 카카오페이 거래확인증은 PDF로 온다. 엑셀과 읽는 법이 다르다.
+        got = (payexport.parse_kakao_pdf(path) if str(path).lower().endswith('.pdf')
+               else payexport.parse(path))
         fresh = 0
         for r in got.rows:
             key = (r.when, r.amount, r.raw_name)
@@ -241,7 +243,7 @@ def main() -> int:
     ap.add_argument('-o', '--out', default='budget_artifact.html')
     ap.add_argument('--json', default=None, help='데이터만 따로 저장할 경로')
     ap.add_argument('--pay', nargs='*', default=[],
-                    help='네이버페이 카드영수증 · 카카오페이 거래내역서 엑셀')
+                    help='네이버페이 카드영수증 엑셀 · 카카오페이 거래확인증 PDF')
     ap.add_argument('--saved', default=None,
                     help='화면에서 저장해 둔 결정(JSON). 새로 구울 때 이어 붙인다')
     args = ap.parse_args()

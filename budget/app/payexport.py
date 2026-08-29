@@ -253,7 +253,19 @@ def apply_names(transactions, receipts, only_vague=True) -> dict:
 
 
 VAGUE_NAMES = {'네이버페이', '카카오페이', '토스', '페이코', '삼성페이', '애플페이',
-               '스마일캐시', '네이버파이낸셜', '네이버파이낸셜㈜', '카카오페이㈜'}
+               '스마일캐시', '네이버파이낸셜', '네이버파이낸셜㈜', '카카오페이㈜',
+               # 뱅샐이 가맹점 자리를 비워 두고 쓰는 말
+               '결제 내역', '결제내역', '승인 내역',
+               # 카카오 선물하기·구독은 전부 '주식회사 카카오'로 찍힌다.
+               # 회사 이름은 맞지만 무엇을 샀는지는 하나도 안 알려 준다.
+               '주식회사 카카오', '카카오', '주식회사 카카오모빌리티'}
+
+
+def _is_vague_name(name: str) -> bool:
+    name = ' '.join(str(name or '').split())
+    for junk in ('(주)', '㈜', '주식회사', '(유)', '유한회사'):
+        name = name.replace(junk, '')
+    return name.strip() in VAGUE_NAMES
 
 
 def _is_vague(tx) -> bool:
@@ -266,3 +278,89 @@ def _is_vague(tx) -> bool:
     for junk in ('(주)', '㈜', '주식회사', '(유)', '유한회사'):
         name = name.replace(junk, '')
     return name.strip() in VAGUE_NAMES
+
+
+# ── 카카오페이 거래확인증 PDF
+#
+# 카카오페이 고객센터에서 받는 '거래확인증'은 한 장에 한 건씩 들어 있다.
+# 이게 귀한 이유는 뱅샐이 못 주는 두 가지가 적혀 있기 때문이다 —
+# **가맹점명**(뱅샐엔 '결제 내역'이라고만 찍힌다)과 **상품명**.
+#
+# 글자층이 있는 것과 없는 것이 섞여 있다. 없는 것(윤곽선으로 그려진 것)은
+# 여기서 못 읽는다. 그건 읽었다고 거짓말하지 말고 그렇다고 알려 준다.
+KAKAO_LABELS = ('결제번호', '거래일시', '거래유형', '가맹점', '승인번호', '카드사',
+                '할부기간', '금액', '총', '주문금액', '페이포인트', '공급자', '결제수단',
+                '취소일시', '사업자등록번호', '주소', '연락처', '상호명', '결제대행사',
+                '위 내용과', '대표자명', '부가세')
+
+
+def _kakao_field(text, pattern):
+    # 줄 단위로 찾는다. MULTILINE 없이 '$' 를 쓰면 문서 맨 끝에서만 맞아서,
+    # '가맹점명 …' 처럼 줄 끝으로 끝나는 항목이 통째로 안 잡힌다.
+    import re
+    m = re.search(pattern, text, re.M)
+    return m.group(1).strip() if m else ''
+
+
+def _kakao_item(lines):
+    """상품명. 길면 '거래유형 … 상품명' 줄의 위아래로 쪼개져 들어온다.
+
+    라벨 줄에서 '상품명' 뒤를 집고, 그 앞뒤로 라벨이 아닌 줄이 붙어 있으면
+    같이 잇는다. 이 처리를 안 하면 '종 외 2건', 'kg)' 같은 부스러기만 남는다.
+    """
+    idx = next((i for i, l in enumerate(lines) if '거래유형' in l and '상품명' in l), -1)
+    if idx < 0:
+        return ''
+    head = lines[idx].split('상품명', 1)[1].strip()
+    before = lines[idx-1].strip() if idx > 0 else ''
+    after = lines[idx+1].strip() if idx + 1 < len(lines) else ''
+    plain = lambda s: s and not s.startswith(KAKAO_LABELS)
+    parts = ([before] if plain(before) else []) + ([head] if head else []) \
+        + ([after] if plain(after) else [])
+    return ' '.join(p for p in parts if p).strip()
+
+
+def parse_kakao_pdf(path) -> PayFile:
+    """거래확인증 PDF 한 묶음을 읽는다. 한 장이 한 건이다."""
+    import pdfplumber
+    from datetime import datetime as _dt
+
+    out = PayFile(path=str(path))
+    blank = 0
+    with pdfplumber.open(path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text() or ''
+            if '거래확인증' not in text:
+                if not text.strip():
+                    blank += 1
+                continue
+            lines = text.split('\n')
+            when = _kakao_field(text, r'거래일시\s+([\d.]+\s+[\d:]+)')
+            amt = _kakao_field(text, r'총 결제금액\s+(-?[\d,]+)\s*원')
+            shop = _kakao_field(text, r'가맹점명\s+(.+?)(?:\s+대표자명|\s*$)')
+            kind = _kakao_field(text, r'거래유형\s+(\S+)')
+            if not when or not amt:
+                continue
+            try:
+                stamp = _dt.strptime(when.strip(), '%Y.%m.%d %H:%M:%S')
+            except ValueError:
+                continue
+            item = _kakao_item(lines)
+            # 보통은 가맹점명이 진짜 가게다. 다만 카카오 선물하기·구독은 전부
+            # '주식회사 카카오'로 찍혀서 무엇을 샀는지 하나도 안 알려 준다.
+            # 그럴 때만 상품명을 앞세운다.
+            name = (item or shop) if (not shop or _is_vague_name(shop)) else shop
+            out.rows.append(Receipt(
+                when=stamp, name=_shorten(name), raw_name=' '.join((item or name).split()),
+                amount=abs(_as_int(amt)), issuer=_kakao_field(text, r'카드사\s+(.+?)\s+카드번호'),
+                sheet='카카오페이 거래확인증',
+                # 취소 건은 짝이 되는 승인과 서로 지워지므로 이름을 붙이지 않는다
+                cancelled=(kind == '취소' or _as_int(amt) < 0),
+            ))
+    out.source = f'{len(out.rows)}장'
+    if not out.rows:
+        raise PayParseError(
+            '글자를 읽을 수 없는 PDF입니다. 카카오페이 거래확인증 중에는 글자가 '
+            '그림으로 그려져 있어 읽히지 않는 것이 있습니다'
+            + (f' (빈 쪽 {blank}장).' if blank else '.'))
+    return out
