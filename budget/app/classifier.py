@@ -112,6 +112,14 @@ class Classifier:
                     if name and name in content:
                         return '가족·용돈', f'family:{name}'
 
+        # 1-3-2. 대출 갚는 곳으로 나가는 돈. 뱅샐이 '이체'로 던져 놓아서
+        #        그대로 두면 내계좌이체로 사라진다. 실제로 학자금 원리금
+        #        47건 66만원이 통째로 안 잡히고 있었다. 다달이 나가는 빚이다.
+        if not tx.inflow:
+            for kw in self.rules.get('loan_servicers', []):
+                if kw in content:
+                    return '대출원리금', f'servicer:{kw}'
+
         # 1-4. 대출 실행금 — 들어온 돈이지만 소득이 아니다
         for kw in self.rules.get('loan_keywords', []):
             if kw in content:
@@ -523,6 +531,50 @@ def detect_shared_settlements(transactions, names, merchant_words=('쿠팡',)) -
             'who': (back.content or '').strip(), 'amount': back.amount,
             'paid': best.date.isoformat(), 'back': back.date.isoformat(),
             'merchant': best.content,
+        })
+    pairs.sort(key=lambda r: -r['amount'])
+    return pairs
+
+
+REFUND_DAYS = 90
+REFUND_MIN = 1_000
+
+
+def detect_refund_pairs(transactions) -> list[dict]:
+    """환불이 잡혔으면 그 환불을 만든 결제도 같이 뺀다.
+
+    물건값을 돌려받았는데 결제만 남겨 두면 쓴 돈이 그만큼 부풀려진다.
+    되돌아온 돈만 빼고 나간 돈을 그대로 두는 건 앞뒤가 안 맞는다.
+
+    금액이 같고 환불보다 앞선 결제를 짝으로 본다. 가까운 것부터 가져가고,
+    한 번 짝지은 결제는 다시 안 쓴다. 짝을 못 찾은 환불은 건드리지 않는다 —
+    일부만 돌려받았거나 결제가 파일 기간 밖일 수 있어서 함부로 지우면 안 된다.
+    """
+    backs = [t for t in transactions
+             if t.category == '환불·취소' and t.amount >= REFUND_MIN]
+    if not backs:
+        return []
+    buys = [t for t in transactions
+            if t.nature in (cat.FIXED, cat.VARIABLE) and t.amount >= REFUND_MIN]
+
+    used, pairs = set(), []
+    for back in sorted(backs, key=lambda t: -t.amount):
+        best, gap = None, 10 ** 9
+        for buy in buys:
+            if id(buy) in used or buy.amount != back.amount:
+                continue
+            days = (back.date - buy.date).days
+            if 0 <= days <= REFUND_DAYS and days < gap:
+                best, gap = buy, days
+        if best is None:
+            continue
+        used.add(id(best))
+        best.category = '결제취소'
+        best.nature = cat.EXCLUDED
+        best.rule = 'refund-pair'
+        pairs.append({
+            'amount': back.amount, 'paid': best.date.isoformat(),
+            'back': back.date.isoformat(), 'content': best.content,
         })
     pairs.sort(key=lambda r: -r['amount'])
     return pairs

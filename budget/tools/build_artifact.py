@@ -97,6 +97,11 @@ def load(paths_and_owners, pay_files=()) -> tuple[list, dict]:
     classifier.detect_loan_disbursements(txs, all_loans)
     # 카드값이 나갔다 그대로 돌아온 짝은 환불이 아니다. 서로 지운다.
     classifier.detect_payment_reversals(txs)
+    # 환불이 잡혔으면 그 환불을 만든 결제도 같이 뺀다.
+    refunds = classifier.detect_refund_pairs(txs)
+    if refunds:
+        print(f"  환불 {len(refunds)}건 · {sum(r['amount'] for r in refunds):,}원 — "
+              f"되돌려받은 돈과 그 결제를 함께 뺐습니다")
     # 아이디를 같이 쓰는 가족 대신 긁어 준 것도 짝을 지어 함께 뺀다.
     settle = classifier.detect_shared_settlements(
         txs, engine.rules.get('settle_names', []))
