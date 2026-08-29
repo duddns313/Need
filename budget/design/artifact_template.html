@@ -332,6 +332,15 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
       <p class="note" id="expNote" style="margin:12px 0 0"></p>
     </div>
 
+    <div class="card" id="whoCard" hidden>
+      <h2>누가 썼나</h2>
+      <p class="sub">한 사람 것을 누르면 그 사람이 쓴 항목만 볼 수 있습니다.
+        누가 더 썼는지를 따지려는 게 아니라, <b>어느 쪽 씀씀이를 손대야
+        하는지</b>가 합계만 봐서는 안 보이기 때문입니다.</p>
+      <div class="bars" id="whoBars"></div>
+      <p class="note" id="whoNote" style="margin:12px 0 0"></p>
+    </div>
+
     <div class="card">
       <h2>무엇으로 결제했나</h2>
       <p class="sub">간편결제는 가맹점 이름이 <b>「네이버페이」처럼 뭉뚱그려 찍히는 일</b>이 많아
@@ -607,6 +616,12 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
         <div class="hint">원천징수영수증 <b>16번 계</b> 또는 홈택스 연말정산간소화에서 확인합니다.
           작년 것을 넣어도 대략 맞습니다.</div>
         <div class="unit"><input type="text" id="inSalary" inputmode="numeric" placeholder="예: 63,000,000"><span>원</span></div>
+      </div>
+      <div class="field" id="spouseWrap">
+        <label for="inSpouse">배우자 총급여 (연간, 세전)</label>
+        <div class="hint">맞벌이는 <b>누구 앞으로 모느냐</b>로 환급액이 달라집니다.
+          넣으면 의료비·연금을 어느 쪽에 몰아야 하는지 계산해 드립니다.</div>
+        <div class="unit"><input type="text" id="inSpouse" inputmode="numeric" placeholder="예: 50,000,000"><span>원</span></div>
       </div>
       <div class="field">
         <label for="inPension">올해 연금저축 납입액</label>
@@ -1440,6 +1455,7 @@ function renderMonth() {
   drawBars(document.getElementById('expBars'), t.exp_cat, 'var(--spend)', intoCat, cmp && cmp.exp_cat);
   drawBars(document.getElementById('incBars'), t.inc_cat, 'var(--income)', intoCat, cmp && cmp.inc_cat, 'gain');
   drawBars(document.getElementById('savBars'), t.sav_cat, 'var(--save)', intoCat, cmp && cmp.sav_cat, 'gain');
+  drawWho(m, cmp);
   document.getElementById('expNote').innerHTML = cmp
     ? `오른쪽 화살표는 지난달과 견준 것입니다. 크게 움직인 항목에만 붙습니다.
        색이 붙은 것은 <b>줄이자고 안내하는 항목</b>이고, 회색은 의료비·장보기처럼
@@ -1448,6 +1464,41 @@ function renderMonth() {
   drawReconcile();
   drawTrend();
   drawExcluded();
+}
+
+/* ── 누가 썼나.
+   합계만 보면 '이번 달 많이 썼네'에서 끝난다. 둘 중 누구의 어느 항목이
+   움직였는지를 알아야 손을 댈 수 있다. 다만 이건 서로 따지라고 만든 게
+   아니라서, 사람별 막대를 누르면 바로 그 사람의 '항목별'로 들어가게 했다. */
+function drawWho(m, prev) {
+  const who = (D.owners || []).filter(Boolean);
+  const card = document.getElementById('whoCard');
+  card.hidden = who.length < 2;
+  if (who.length < 2) return;
+  const bag = {}, was = {};
+  for (const r of ROWS) {
+    const n = natOf(r);
+    if (n !== FIXED && n !== VARIABLE) continue;
+    if (monthOf(r) === m) bag[r.o] = (bag[r.o] || 0) + r.a;
+  }
+  if (prev) for (const r of ROWS) {
+    const n = natOf(r);
+    if ((n === FIXED || n === VARIABLE) && monthOf(r) === MONTHS[idx-1])
+      was[r.o] = (was[r.o] || 0) + r.a;
+  }
+  who.forEach(w => { if (bag[w] == null) bag[w] = 0; });
+  drawBars(document.getElementById('whoBars'), bag, 'var(--spend)', name => {
+    const rs = pick(r => r.o === name && (natOf(r) === FIXED || natOf(r) === VARIABLE), m);
+    const byCat = {};
+    rs.forEach(r => byCat[catOf(r)] = (byCat[catOf(r)] || 0) + r.a);
+    openDetail({ title: `${josa(name, '이', '가')} 쓴 돈`,
+                 scope: `${m.slice(0,4)}년 ${+m.slice(5)}월`, rows: rs, cats: byCat });
+  }, prev ? was : null, 'flat');
+  const tot = Object.values(bag).reduce((a,v) => a + v, 0);
+  document.getElementById('whoNote').innerHTML = tot
+    ? who.map(w => `${esc(w)} <b>${((bag[w]||0)/tot*100).toFixed(0)}%</b>`).join(' · ')
+      + ' — 카드값을 누가 냈는지가 아니라 <b>누구 이름으로 결제됐는지</b> 기준입니다.'
+    : '';
 }
 
 /* ── 카드 대사(對査).
@@ -1593,6 +1644,8 @@ const FILTERS = [
   { id:'edited',  label:'내가 고친 것', test: r => !!mine.cat[r.u] },
   { id:'once',    label:'일회성',   test: r => isOnce(r) },
   { id:'added',   label:'직접 넣은 것', test: r => !!r.added },
+  ...((D.owners || []).length > 1
+      ? D.owners.map(w => ({ id:'who:'+w, label:w, test: r => r.o === w })) : []),
   { id:'spend',   label:'쓴 돈',    test: r => { const n = natOf(r); return n === FIXED || n === VARIABLE; } },
   { id:'save',    label:'저축·투자', test: r => natOf(r) === SAVING },
   { id:'income',  label:'번 돈',    test: r => natOf(r) === INCOME },
@@ -2495,13 +2548,41 @@ function renderTax() {
         안경·콘택트렌즈(1인 50만원), 산후조리원(1회 200만원)도 들어갑니다.
         신용카드로 결제한 의료비는 카드 공제와 <b>중복으로</b> 받을 수 있으니 빠뜨리지 마세요.`,
   });
-  tips.push({
-    t: '맞벌이는 누구 앞으로 몰지가 중요합니다',
-    b: `<b>의료비</b>는 총급여가 <b>적은</b> 사람에게 몰아야 3% 문턱을 쉽게 넘습니다.
-        <b>부양가족 공제</b>는 세율이 <b>높은</b> 사람이 받는 게 유리합니다.
-        연금계좌 공제율도 총급여 ${won(RATE_LINE)} 이하면 16.5%, 넘으면 13.2%라
-        <b>낮은 쪽이 먼저 한도를 채우는</b> 게 이득입니다. 두 분 파일을 다 올리면 같이 계산해 드립니다.`,
-  });
+  /* 두 사람 급여를 다 알면 '누구 앞으로 몰지'를 원론이 아니라 이름으로
+     말할 수 있다. 맞벌이에서 이 배치 하나로 수십만원이 갈린다. */
+  const meS = taxVal('salary'), spS = taxVal('spouse');
+  const who = (D.owners || []).length > 1 ? D.owners : ['본인', '배우자'];
+  if (meS && spS) {
+    const meLow = meS <= spS;
+    const low = meLow ? '본인' : '배우자', high = meLow ? '배우자' : '본인';
+    const lowS = Math.min(meS, spS), highS = Math.max(meS, spS);
+    const lowRate = lowS > RATE_LINE ? RATE_LOW : RATE_HIGH;
+    const highRate = highS > RATE_LINE ? RATE_LOW : RATE_HIGH;
+    const diff = Math.round(PENSION_CAP * (lowRate - highRate));
+    tips.push({
+      t: `맞벌이 — ${low} 앞으로 모으세요`,
+      b: `총급여가 <b>${low}(${won(lowS)})</b>이 <b>${high}(${won(highS)})</b>보다 적습니다.<br>
+          <b>의료비</b>는 총급여의 3%를 넘는 만큼만 공제되니 문턱이 낮은
+          <b>${low}</b> 앞으로 몰아 결제하세요 — 문턱이 ${won(Math.round(lowS*.03))}
+          대 ${won(Math.round(highS*.03))}로 <b>${won(Math.round((highS-lowS)*.03))}</b> 차이 납니다.<br>
+          <b>연금계좌</b>는 ${lowRate === highRate
+            ? `두 분 다 공제율이 ${(lowRate*100).toFixed(1)}%로 같으니 순서는 상관없습니다.`
+            : `${low}이 ${(lowRate*100).toFixed(1)}%, ${high}이 ${(highRate*100).toFixed(1)}%입니다.
+               <b>${low}</b>이 900만원 한도를 먼저 채우면 같은 돈으로
+               <b>${won(diff)}</b>을 더 돌려받습니다.`}<br>
+          <b>부양가족 공제</b>는 반대로 세율이 높은 <b>${high}</b>이 받는 게 유리합니다.`,
+    });
+  } else {
+    tips.push({
+      t: '맞벌이는 누구 앞으로 몰지가 중요합니다',
+      b: `<b>의료비</b>는 총급여가 <b>적은</b> 사람에게 몰아야 3% 문턱을 쉽게 넘습니다.
+          <b>부양가족 공제</b>는 세율이 <b>높은</b> 사람이 받는 게 유리합니다.
+          연금계좌 공제율도 총급여 ${won(RATE_LINE)} 이하면 16.5%, 넘으면 13.2%라
+          <b>낮은 쪽이 먼저 한도를 채우는</b> 게 이득입니다.<br>
+          위에 <b>배우자 총급여</b>를 넣으면 누구 앞으로 얼마나 몰아야 하는지
+          숫자로 계산해 드립니다.`,
+    });
+  }
   tips.push({
     t: '고향사랑기부제 — 10만원 넣고 13만원 받기',
     b: `10만원까지는 <b>전액 세액공제</b>이고, 기부액의 30%를 답례품으로 받습니다.
@@ -2515,7 +2596,7 @@ function renderTax() {
 }
 
 function wireTax() {
-  [['inSalary','salary'], ['inPension','pension'], ['inIrp','irp'],
+  [['inSalary','salary'], ['inSpouse','spouse'], ['inPension','pension'], ['inIrp','irp'],
    ['inChungyak','chungyak'], ['inMortgage','mortgage'], ['inExtra','extra']]
     .forEach(([id, key]) => {
       const inp = document.getElementById(id);
