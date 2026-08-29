@@ -83,6 +83,19 @@ class Classifier:
         if hit:
             return hit, 'user'
 
+        # 1-1. '지출'인데 돈이 들어온 줄. 뱅샐에서 타입은 딱지일 뿐이고
+        #      방향을 말해 주는 건 금액의 부호다. 지출 칸에 양수로 찍힌 것은
+        #      나간 돈이 아니라 되돌아온 돈이다.
+        #
+        #      대표적인 게 가승인(假承認)이다. 우버·쏘카는 결제 전에 예상 금액을
+        #      잡아 뒀다가(-16,600) 풀고(+16,600) 실제 요금을 따로 긁는다.
+        #      abs()로 부호를 지우고 둘 다 '지출'로 세면 한 번 탄 택시가 세 번
+        #      계산된다. 실제로 323건 998만원이 쓴 돈에 얹혀 있었다.
+        #      여기서 환불로 돌려놓으면 짝이 되는 결제는 detect_refund_pairs 가
+        #      찾아 함께 뺀다.
+        if tx.bs_type == '지출' and tx.inflow:
+            return '환불·취소', 'sign:지출인데-들어온-돈'
+
         # 1-2. 확인해서 넣어둔 상호 표 (웹 검색·알려진 체인)
         known = self.rules.get('merchants', {}).get(content)
         if known:
@@ -559,13 +572,20 @@ def detect_refund_pairs(transactions) -> list[dict]:
 
     used, pairs = set(), []
     for back in sorted(backs, key=lambda t: -t.amount):
+        # 이름까지 같은 짝을 먼저 찾는다. 금액만 보고 고르면 같은 값의 엉뚱한
+        # 결제가 걸린다 — 가승인은 이름이 똑같이 남으므로 이 순서가 중요하다.
         best, gap = None, 10 ** 9
-        for buy in buys:
-            if id(buy) in used or buy.amount != back.amount:
-                continue
-            days = (back.date - buy.date).days
-            if 0 <= days <= REFUND_DAYS and days < gap:
-                best, gap = buy, days
+        for same_name in (True, False):
+            for buy in buys:
+                if id(buy) in used or buy.amount != back.amount:
+                    continue
+                if same_name and (buy.content or '') != (back.content or ''):
+                    continue
+                days = (back.date - buy.date).days
+                if 0 <= days <= REFUND_DAYS and days < gap:
+                    best, gap = buy, days
+            if best is not None:
+                break
         if best is None:
             continue
         used.add(id(best))
