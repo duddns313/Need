@@ -78,10 +78,29 @@ def load(paths_and_owners, pay_files=()) -> tuple[list, dict]:
     classifier.detect_loan_disbursements(txs, all_loans)
     # 카드값이 나갔다 그대로 돌아온 짝은 환불이 아니다. 서로 지운다.
     classifier.detect_payment_reversals(txs)
+    # 아이디를 같이 쓰는 가족 대신 긁어 준 것도 짝을 지어 함께 뺀다.
+    settle = classifier.detect_shared_settlements(
+        txs, engine.rules.get('settle_names', []))
+    if settle:
+        print(f"  대신결제 {len(settle)}쌍 · "
+              f"{sum(s['amount'] for s in settle):,}원 — 결제와 정산을 함께 뺐습니다")
 
     owners = [pf.owner for pf in files]
     if len(owners) > 1:
-        couple.offset_spouse_transfers(txs, owners)
+        # 상계 함수는 '누구 파일이 누구 실명인지'를 알아야 한다. 파일을 올린
+        # 순서대로 본인·배우자로 본다. 라벨('호현')만 넘기면 이름 대조가
+        # 통째로 빗나가서, 같은 날 같은 금액이라는 이유만으로 남남인 거래가
+        # 묶일 수 있다.
+        fam = engine.rules.get('family_names', {})
+        real = {}
+        for label, group in zip(owners, ('self', 'spouse')):
+            got = fam.get(group) or []
+            if got:
+                real[label] = got[0]
+        pairs = couple.offset_spouse_transfers(txs, real)
+        if pairs:
+            print(f"  부부간이체 상계 {len(pairs)}쌍 · "
+                  f"{sum(p[0].amount for p in pairs):,}원")
 
     wealth = {
         'assets': sum(pf.total_assets for pf in files),

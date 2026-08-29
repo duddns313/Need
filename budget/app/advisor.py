@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import calendar
 import math
 import statistics as st
 from collections import defaultdict
@@ -57,13 +58,37 @@ def _months(transactions) -> list[str]:
     return out
 
 
+def partial_month(transactions, months=None) -> str:
+    """아직 안 끝난 마지막 달의 이름. 없으면 빈 문자열.
+
+    파일을 달 중간에 내보내면 마지막 달은 반쪽짜리다. 그걸 온전한 달로 세면
+    중앙값이 아래로 끌려가고 '지난달보다 덜 썼다'는 칭찬까지 나간다.
+    파일에 담긴 마지막 날 뒤로는 자료가 없을 뿐이니 그렇게 읽는다.
+    """
+    months = months if months is not None else _months(transactions)
+    if not months or not transactions:
+        return ''
+    last, as_of = months[-1], max(t.date for t in transactions)
+    if as_of.strftime('%Y-%m') != last:
+        return ''
+    in_month = calendar.monthrange(as_of.year, as_of.month)[1]
+    return last if as_of.day < in_month else ''
+
+
+def whole_months(transactions, months=None) -> list[str]:
+    """온전한 달만. 평소 한 달을 재는 자리에는 반쪽짜리를 넣지 않는다."""
+    months = months if months is not None else _months(transactions)
+    part = partial_month(transactions, months)
+    return [m for m in months if m != part]
+
+
 def baseline(transactions, months=None) -> dict:
     """'평소 한 달' 수준. 평균이 아니라 중앙값을 쓴다.
 
     평균은 대출 실행이나 이사처럼 한 달짜리 사건에 통째로 끌려간다.
     중앙값은 안 끌려간다. 가계에서 알고 싶은 건 '보통 달'이다.
     """
-    months = months or _months(transactions)
+    months = months or whole_months(transactions)
     recent = months[-RECENT:] if len(months) > RECENT else months
     if not recent:
         return {}
@@ -93,7 +118,7 @@ def health(transactions, liquid=None) -> list[dict]:
     liquid 를 주면 비상금까지 본다 — 당장 꺼내 쓸 수 있는 돈의 합계다.
     투자·연금은 넣으면 안 된다. 급할 때 손해 보고 팔거나 아예 못 뺀다.
     """
-    months = _months(transactions)
+    months = whole_months(transactions)
     if len(months) < MIN_MONTHS:
         return []
     base = baseline(transactions, months)
@@ -143,7 +168,8 @@ def health(transactions, liquid=None) -> list[dict]:
             'target': '장보기 비중이 높을수록 같은 끼니를 덜 쓰고 먹습니다.',
         })
 
-    spends = [aggregate.summary(transactions, m)['지출'] for m in months]
+    spends = [aggregate.summary(transactions, m)['지출']
+              for m in whole_months(transactions, months)]
     if len(spends) >= MIN_MONTHS and st.median(spends):
         swing = (max(spends) - min(spends)) / st.median(spends)
         checks.append({
@@ -194,7 +220,7 @@ def monthly_by_category(transactions, category) -> dict:
 
 def actions(transactions, top=5) -> list[dict]:
     """줄일 곳 처방. 목표치는 '본인이 이미 해낸 달'에서 가져온다."""
-    months = _months(transactions)
+    months = whole_months(transactions)
     if len(months) < MIN_MONTHS:
         return []
     recent = months[-RECENT:] if len(months) > RECENT else months

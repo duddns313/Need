@@ -91,9 +91,9 @@ class Classifier:
                 if name and name in content:
                     return '내계좌이체', f'family:{name}'
             # 가족(부모·형제 등)에게 보낸 돈 — 내 계좌 사이를 옮긴 게 아니라
-            # 실제로 집 밖으로 나가는 돈이라 지출로 센다. 수입 방향(이 사람들이
-            # 보낸 돈)까지 여기서 지출로 잡으면 안 되므로 방향을 가린다.
-            if tx.bs_type != '수입':
+            # 실제로 집 밖으로 나가는 돈이라 지출로 센다. 이 사람들이 보내 준
+            # 돈까지 지출로 잡으면 안 되므로 나가는 것만 본다.
+            if tx.bs_type == '지출' or (tx.bs_type == '이체' and not tx.inflow):
                 for name in family.get('family', []):
                     if name and name in content:
                         return '가족·용돈', f'family:{name}'
@@ -109,6 +109,14 @@ class Classifier:
         #     교통비로 잡히는 사고가 났다.)
         if tx.bs_type == '수입':
             return self._decide_income(content)
+
+        # 2-2. '이체'인데 돈이 들어온 줄. 지출 규칙을 태우면 안 된다.
+        #      뱅샐의 '이체'는 들어온 것과 나간 것이 한 칸에 섞여 있고,
+        #      금액의 부호만이 방향을 알려준다. 그걸 무시했더니 아내 파일에서
+        #      '스마트에코'가 '마트'에 걸려 3,632만원의 입금이 식료품으로,
+        #      계좌에 들어온 3,000만원이 저축으로 잡혀 있었다.
+        if tx.bs_type == '이체' and tx.inflow:
+            return self._decide_transfer_in(content)
 
         # 3. 제외 키워드
         for kw in self.rules.get('exclude_keywords', []):
@@ -172,6 +180,21 @@ class Classifier:
             return '미분류', 'pg:가게이름-대신-대행사'
         kind, tag = self._person_transfer(content)
         return (kind, tag) if kind else ('내계좌이체', why)
+
+    def _decide_transfer_in(self, content: str) -> tuple[str, str]:
+        """계좌로 들어온 이체. 번 돈도 쓴 돈도 아닌 것이 대부분이다.
+
+        내 계좌 사이를 옮긴 것이 기본이다. 다만 사람 이름으로 들어온 것은
+        같이 먹고 나눠 낸 돈(정산)이라 따로 표시한다 — 번 돈으로 세면 소득이,
+        쓴 돈으로 세면 지출이 부풀려진다. 어느 쪽도 아니다.
+        """
+        for kw in self.rules.get('income_finance_keywords', []):
+            if kw in content:
+                return '금융소득', f'income:{kw}'
+        kind, tag = self._person_transfer(content)
+        if kind == '개인송금':
+            return '정산받음', tag.replace('person:', 'settle-in:')
+        return '내계좌이체', 'transfer-in'
 
     def _is_bill(self, content: str) -> bool:
         """청구서 이름인가 — 통신사·한전처럼 명의자 이름을 달고 나가는 것."""
@@ -440,3 +463,52 @@ def _load(path: Path, default=None):
     if not path.exists():
         return default if default is not None else {}
     return json.loads(path.read_text(encoding='utf-8'))
+
+
+SETTLE_DAYS = 3            # 결제하고 그 자리에서 정산하는 게 보통이다
+SETTLE_MIN = 500
+
+
+def detect_shared_settlements(transactions, names, merchant_words=('쿠팡',)) -> list[dict]:
+    """아이디를 같이 쓰는 가족이 되갚아 준 돈과, 그 짝이 되는 결제를 함께 뺀다.
+
+    실제 파일에서 안빈·윤다운이 쿠팡 아이디를 같이 쓰고 있었다. 윤영운이 카드로
+    긁고 그 자리에서 정산을 받는데, 결제 48초 뒤에 같은 금액이 들어온다.
+    둘 다 남겨 두면 쓴 돈도 번 돈도 실제보다 부풀려진다. 한쪽만 빼면 더 나쁘다.
+
+    금액이 같고 며칠 안쪽인 짝만 본다. 한 번 짝지은 결제는 다시 안 쓴다.
+    짝을 못 찾은 입금은 손대지 않는다 — 여러 건을 몰아서 준 것일 수도 있고,
+    쿠팡이 아닌 다른 정산일 수도 있어서 함부로 지우면 안 된다.
+    """
+    def is_settler(tx):
+        name = (tx.content or '').split('(')[0].strip()
+        return any(name == n for n in names)
+
+    backs = [t for t in transactions if is_settler(t) and t.amount >= SETTLE_MIN]
+    buys = [t for t in transactions
+            if not t.inflow and t.amount >= SETTLE_MIN
+            and any(w in (t.content or '') for w in merchant_words)]
+
+    used, pairs = set(), []
+    for back in sorted(backs, key=lambda t: -t.amount):
+        best, gap = None, 999
+        for buy in buys:
+            if id(buy) in used or buy.amount != back.amount:
+                continue
+            d = abs((buy.date - back.date).days)
+            if d <= SETTLE_DAYS and d < gap:
+                best, gap = buy, d
+        if best is None:
+            continue
+        used.add(id(best))
+        for tx in (best, back):
+            tx.category = '대신결제'
+            tx.nature = cat.EXCLUDED
+            tx.rule = f'settle:{(back.content or "").strip()}'
+        pairs.append({
+            'who': (back.content or '').strip(), 'amount': back.amount,
+            'paid': best.date.isoformat(), 'back': back.date.isoformat(),
+            'merchant': best.content,
+        })
+    pairs.sort(key=lambda r: -r['amount'])
+    return pairs

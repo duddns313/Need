@@ -32,11 +32,16 @@ class Transaction:
     bs_major: str         # 뱅샐 대분류
     bs_minor: str         # 뱅샐 소분류
     content: str
-    amount: int           # 항상 양수. 방향은 bs_type / category가 정한다
+    amount: int           # 항상 양수. 방향은 bs_type / inflow 가 정한다
     method: str
     memo: str
     owner: str            # 남편/아내 (업로드 슬롯에서 부여)
     seq: int = 0          # 같은 파일 안에서 완전히 동일한 행의 등장 순번 (0,1,2…)
+    # 원본 금액의 부호. '이체' 줄은 타입만 봐서는 들어온 건지 나간 건지 알 수가
+    # 없고, 부호가 그걸 알려주는 유일한 단서다. abs() 로 지워 버리면 남에게
+    # 부친 돈과 남이 보내 준 돈이 한 덩어리가 된다 — 실제로 두 파일 모두
+    # '이체'가 절반씩 양수·음수로 섞여 있었다.
+    inflow: bool = False
 
     # 분류기가 채우는 값
     category: str = ''
@@ -178,7 +183,8 @@ def _parse_transactions(ws, owner: str) -> list[Transaction]:
         date = _as_date(row[0])
         if date is None:
             continue
-        amount = abs(_as_int(row[6]))
+        raw = _as_int(row[6])
+        amount = abs(raw)
         if amount == 0 and not _text(row[5]):
             continue
         key = (date, _as_time(row[1]), _text(row[2]), amount, _text(row[5]),
@@ -197,6 +203,7 @@ def _parse_transactions(ws, owner: str) -> list[Transaction]:
             memo=_text(row[9]) if len(row) > 9 else '',
             owner=owner,
             seq=seq,
+            inflow=(raw > 0),
         ))
     return out
 
