@@ -575,6 +575,14 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
 
     <div class="card">
       <h2>순자산</h2>
+      <p class="sub">뱅샐은 집을 자산으로 안 잡습니다. 대출만 잡히니 집 있는 분은
+        순자산이 실제보다 <b>집값만큼 낮게</b> 나옵니다. 시세를 넣으면 바로잡힙니다.</p>
+      <div class="field" style="margin-bottom:14px">
+        <label for="homeVal">우리 집 시세 (없으면 비워 두세요)</label>
+        <div class="unit"><input type="text" id="homeVal" inputmode="numeric"
+             placeholder="예: 700000000"><span>원</span></div>
+        <div class="hint" id="homeHint"></div>
+      </div>
       <div class="fig num" id="net" style="font-size:28px"></div>
       <div class="bars" id="wealth" style="margin-top:10px"></div>
       <div class="legend" style="margin-top:14px" id="invest"></div>
@@ -2132,6 +2140,16 @@ const totalInterest = (balance, ratePct, pay) => {
   return m === Infinity ? Infinity : pay * m - balance;
 };
 
+function wireHome() {
+  const el0 = document.getElementById('homeVal');
+  if (el0.dataset.wired) return;
+  el0.dataset.wired = '1';
+  el0.value = mine.tax.home || '';
+  el0.addEventListener('input', () => {
+    mine.tax.home = el0.value; persist(); drawNet(); renderAsset();
+  });
+}
+
 function renderLoans() {
   const loans = D.loans || [];
   const box = document.getElementById('loanInputs');
@@ -2259,13 +2277,23 @@ function renderAllocate() {
      ${p.note ? `<div class="why" style="margin-top:5px">${p.note}</div>` : ''}`)));
 }
 
-(function wealth() {
-  document.getElementById('net').innerHTML = wonf(D.net);
-  const mx = Math.max(D.assets, D.liabilities, 1);
+function drawNet() {
+  /* 집을 넣어야 순자산이 말이 된다. 뱅샐은 주담대(빚)는 가져오지만 집(자산)은
+     안 가져와서, 그대로 두면 5억 대출 진 사람의 순자산이 -3.8억으로 찍힌다.
+     숫자를 보고 겁먹을 일이지 사실이 아니다. */
+  const home = numIn(mine.tax.home);
+  const assets = D.assets + home, net = assets - D.liabilities;
+  document.getElementById('net').innerHTML = wonf(net);
+  document.getElementById('net').style.color = net >= 0 ? 'var(--save)' : 'var(--debt)';
+  document.getElementById('homeHint').innerHTML = home
+    ? `집 <b>${won(home)}</b>을 가진 것에 더했습니다.`
+    : (D.loans || []).some(l => /주택|주담대|모기지/.test(l.name || ''))
+      ? '주택담보대출이 잡혀 있는데 집이 안 잡혀 있습니다. 시세를 넣어 주세요.' : '';
+  const mx = Math.max(assets, D.liabilities, 1);
   document.getElementById('wealth').innerHTML =
     `<div class="bar-row"><div class="nm">가진 것</div>
-       <div><div class="bar" style="width:${D.assets/mx*100}%;background:var(--save)"></div></div>
-       <div class="vl num">${man(D.assets)}</div></div>
+       <div><div class="bar" style="width:${assets/mx*100}%;background:var(--save)"></div></div>
+       <div class="vl num">${man(assets)}</div></div>
      <div class="bar-row"><div class="nm">갚을 것</div>
        <div><div class="bar" style="width:${D.liabilities/mx*100}%;background:var(--debt)"></div></div>
        <div class="vl num">${man(D.liabilities)}</div></div>`;
@@ -2276,7 +2304,8 @@ function renderAllocate() {
     `<span>투자 <b class="num">${won(inv)}</b></span>
      <span>수익률 <b class="num" style="color:${ret>=0?'var(--good)':'var(--act)'}">${ret>=0?'+':''}${(ret*100).toFixed(1)}%</b></span>
      <span>대출 잔액 <b class="num">${won(D.loans.reduce((a,l)=>a+(l['잔액']||0),0))}</b></span>`;
-})();
+}
+
 
 /* ═══════════════════════════════════════════════════════════
    4. 절세 — 아껴서 모으는 돈보다 안 내도 되는 세금이 클 때가 있다
@@ -2503,6 +2532,7 @@ function wireTax() {
 function refresh() {
   recompute();
   renderHome(); renderMonth(); renderList(); renderGoal(); renderAsset(); renderTax();
+  drawNet(); wireHome();
   const dot = (ROWS.filter(r => catOf(r) === '미분류').length || SPIKES.length
                || reviewItems().length) ? '<span class="dot"></span>' : '';
   document.getElementById('t-list').innerHTML = '내역' + dot;

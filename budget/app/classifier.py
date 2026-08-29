@@ -64,6 +64,20 @@ class Classifier:
     def _decide(self, tx) -> tuple[str, str]:
         content = tx.content or ''
 
+        # 0. 통째로 빼기로 한 계좌. 회사가 관리하는 연구비 계좌처럼 내 살림이
+        #    아닌 돈은 한 줄씩 가릴 게 아니라 계좌째로 뺀다. 사용자 규칙보다도
+        #    먼저다 — 이 계좌 안에서는 어떤 상호가 나와도 내 소비가 아니다.
+        if tx.method and tx.method in self.rules.get('excluded_methods', []):
+            return '연구비계좌', f'account:{tx.method}'
+
+        # 0-2. 주담대 원리금이 빠져나가는 계좌. 숫자만 찍혀서 이름으로는
+        #      알 수가 없고, 그대로 두면 2,771만원이 '내계좌이체'로 사라진다.
+        #      5억 대출을 지고 있는데 이자가 한 푼도 안 잡히던 이유였다.
+        if not tx.inflow:
+            digits = _digits(content)
+            if digits and digits in self.rules.get('loan_accounts', []):
+                return '대출원리금', f'loan-account:{digits}'
+
         # 1. 사용자가 손으로 확정한 것 — 무조건 우선
         hit = self.user_rules.get(content)
         if hit:
