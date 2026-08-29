@@ -35,11 +35,30 @@ def load(paths_and_owners, pay_files=()) -> tuple[list, dict]:
     먼저 해야 한다 — '네이버페이'라는 이름으로는 어느 항목인지 알 수 없지만
     '핑기 실리카겔 제습제'면 생활용품인 게 보인다.
     """
-    txs, files = [], []
+    # 한 사람이 파일을 여러 개 줄 수 있다. 뱅샐은 기간을 정해 내보내므로
+    # 나중에 받은 파일이 앞 파일과 겹친다. uid 는 (사람·날짜·시각·금액·내용·
+    # 결제수단·같은 줄 순번)으로 만들어지니 같은 거래는 같은 uid 다. 먼저 온
+    # 것을 남기고 겹치는 것은 버린다 — 안 그러면 그 기간 소비가 두 배가 된다.
+    txs, parsed, seen = [], [], set()
     for path, owner in paths_and_owners:
         pf = parser.parse(path, owner)
-        files.append(pf)
-        txs.extend(pf.transactions)
+        parsed.append(pf)
+        fresh = [t for t in pf.transactions if t.uid not in seen]
+        seen.update(t.uid for t in fresh)
+        dup = len(pf.transactions) - len(fresh)
+        if dup:
+            print(f"  {Path(path).name} — {len(fresh)}건 추가 (겹치는 {dup}건 제외)")
+        txs.extend(fresh)
+
+    # 자산·부채는 합치면 안 된다. 같은 통장이 파일마다 들어 있어서 더하면
+    # 잔액이 사람 수만큼 불어난다. 사람마다 가장 최근 파일 하나만 쓴다.
+    latest = {}
+    for pf in parsed:
+        when = max((t.date for t in pf.transactions), default=None)
+        cur = latest.get(pf.owner)
+        if cur is None or (when and when > cur[0]):
+            latest[pf.owner] = (when, pf)
+    files = [pf for _, pf in latest.values()]
 
     # 영수증 파일은 여러 개로 나눠 받게 된다(달마다, 카드/현금 따로). 같은 건이
     # 여러 파일에 겹쳐 들어오므로 한 번에 모아 놓고 중복을 걷어낸 뒤 붙인다.
@@ -191,7 +210,8 @@ def main() -> int:
 
     owners = args.owners or ['남편', '아내'][:len(args.files)]
     if len(owners) != len(args.files):
-        ap.error('파일 수와 이름 수가 다릅니다.')
+        ap.error('파일 수와 이름 수가 다릅니다. '
+                 '한 사람이 파일을 여러 개 주면 이름도 그만큼 되풀이해 적으세요.')
 
     txs, wealth = load(list(zip(args.files, owners)), pay_files=args.pay)
     data = build(txs, wealth, ' · '.join(owners))

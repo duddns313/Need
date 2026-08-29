@@ -761,11 +761,11 @@ const INCOME = '수입', FIXED = '고정비', VARIABLE = '변동비', SAVING = '
    저장이 막힌 브라우저도 있어서 실패를 삼키고 계속 돌아가게 한다.
    ═══════════════════════════════════════════════════════════ */
 const KEY = 'budget.v3';
-let mine = { cat:{}, once:{}, tax:{}, name:{}, add:[] }, canStore = true;
+let mine = { cat:{}, once:{}, tax:{}, name:{}, ok:{}, add:[] }, canStore = true;
 try {
   const raw = JSON.parse(localStorage.getItem(KEY) || '{}');
   mine = { cat:raw.cat || {}, once:raw.once || {}, tax:raw.tax || {},
-           name:raw.name || {}, add:raw.add || [] };
+           name:raw.name || {}, ok:raw.ok || {}, add:raw.add || [] };
 } catch (e) { canStore = false; }
 const persist = () => { if (!canStore) return;
   try { localStorage.setItem(KEY, JSON.stringify(mine)); } catch (e) { canStore = false; } };
@@ -1495,9 +1495,32 @@ function drawWho(m, prev) {
                  scope: `${m.slice(0,4)}년 ${+m.slice(5)}월`, rows: rs, cats: byCat });
   }, prev ? was : null, 'flat');
   const tot = Object.values(bag).reduce((a,v) => a + v, 0);
+  /* 생활비를 한쪽 통장으로 모아 쓰는 집이 많다. 그러면 그 사람 앞으로 결제가
+     몰려서 '이 사람이 많이 쓴다'로 읽히는데, 사실은 통로일 뿐이다.
+     번 돈과 쓴 돈이 사람마다 반대로 벌어져 있으면 그게 증거다. 짚어 준다. */
+  const inc = {}, spd = {};
+  for (const r of ROWS) {
+    const n = natOf(r);
+    if (n === INCOME) inc[r.o] = (inc[r.o] || 0) + r.a;
+    else if (n === FIXED || n === VARIABLE) spd[r.o] = (spd[r.o] || 0) + r.a;
+  }
+  const over = who.filter(w => (spd[w]||0) > (inc[w]||0));
+  const under = who.filter(w => (inc[w]||0) > (spd[w]||0));
+  let pooled = '';
+  if (over.length === 1 && under.length === 1) {
+    const a = over[0], bb = under[0];
+    const gap = Math.min((spd[a]||0)-(inc[a]||0), (inc[bb]||0)-(spd[bb]||0));
+    if (gap > 1_000_000) pooled =
+      `<br>전체 기간으로 보면 <b>${esc(a)}</b>은 번 것보다
+       <b>${won((spd[a]||0)-(inc[a]||0))}</b> 더 썼고, <b>${esc(bb)}</b>은 쓴 것보다
+       <b>${won((inc[bb]||0)-(spd[bb]||0))}</b> 더 벌었습니다. 생활비를 한쪽 통장으로
+       모아 쓰면 이렇게 나옵니다 — <b>${esc(a)}이 헤프다는 뜻이 아니라</b>
+       그 통장이 집안 결제 통로라는 뜻입니다.`;
+  }
   document.getElementById('whoNote').innerHTML = tot
     ? who.map(w => `${esc(w)} <b>${((bag[w]||0)/tot*100).toFixed(0)}%</b>`).join(' · ')
       + ' — 카드값을 누가 냈는지가 아니라 <b>누구 이름으로 결제됐는지</b> 기준입니다.'
+      + pooled
     : '';
 }
 
@@ -1724,8 +1747,11 @@ function reviewItems() {
       why = '결제를 대신 받아 준 회사만 남아 어느 가게인지 모릅니다';
     else if (k === '내계좌이체' && GUESSED.test(r.r || '') && r.a >= REVIEW_MIN)
       why = '은행 통로로 나간 것만 보고 내 계좌로 넘긴 것입니다';
-    /* 한 번 손댄 것은 확인이 끝난 것이다. 계속 물어보면 목록이 안 줄어든다. */
-    if (!why || edited) continue;
+    /* 한 번 손댄 것은 확인이 끝난 것이다. 계속 물어보면 목록이 안 줄어든다.
+       분류를 바꾸지 않고 '이대로 맞다'고 확인만 한 것도 마찬가지다 — 이미
+       「내계좌이체」인 줄에 '내 계좌였어요'를 누르면 바꿀 게 없어서 아무 일도
+       안 일어나는 것처럼 보였다. 확인했다는 사실을 따로 적어 둔다. */
+    if (!why || edited || (mine.ok || {})[r.u]) continue;
     const n = nameOf(r), e = g[n] || (g[n] = {
       content:n, count:0, amount:0, rows:[], why, cat:k });
     e.count++; e.amount += r.a; e.rows.push(r);
@@ -1874,7 +1900,8 @@ function renderReview() {
     }
     const acts = el('div','rowacts');
     const set = v => { e.rows.forEach(r => {
-      if (v === r.k) delete mine.cat[r.u]; else mine.cat[r.u] = v; });
+      if (v === r.k) delete mine.cat[r.u]; else mine.cat[r.u] = v;
+      (mine.ok || (mine.ok = {}))[r.u] = 1; });
       persist(); refresh(); };
     const own = el('button','mark','내 계좌였어요');
     own.addEventListener('click', () => set('내계좌이체'));
@@ -2662,7 +2689,7 @@ document.getElementById('moreGroups').addEventListener('click', () => {
   groupsShown += 12; renderList();
 });
 document.getElementById('resetEdits').addEventListener('click', () => {
-  mine.cat = {}; mine.once = {}; mine.name = {};
+  mine.cat = {}; mine.once = {}; mine.name = {}; mine.ok = {};
   mine.add = []; persist(); refresh();
 });
 
@@ -2946,7 +2973,7 @@ document.getElementById('impFile').addEventListener('change', e => {
     try {
       const got = JSON.parse(rd.result);
       let n = 0;
-      ['cat','once','name'].forEach(k => {
+      ['cat','once','name','ok'].forEach(k => {
         if (got[k]) { Object.assign(mine[k], got[k]); n += Object.keys(got[k]).length; }
       });
       if (got.tax) Object.assign(mine.tax, got.tax);
