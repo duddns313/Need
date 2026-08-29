@@ -177,6 +177,8 @@ def rows_of(txs) -> list[dict]:
       t 뱅샐 원본 타입 · m 결제수단 · r 어떤 규칙으로 분류됐는지
       h 몇 시 — 동네 가게는 이름만으론 알 수가 없다. 낮 열두 시에 만이천원이면
         점심이다. 분·초까지는 필요 없어서 시(時)만 보낸다.
+      i 들어온 돈인가 — 목록에서 받은 건지 낸 건지 구분이 안 됐다.
+        나간 것이 대부분이라 들어온 것만 표시한다(글자 수를 아낀다).
     """
     out = []
     for tx in sorted(txs, key=lambda t: (t.date, t.time)):
@@ -187,6 +189,8 @@ def rows_of(txs) -> list[dict]:
         }
         if tx.time and tx.time[:2].isdigit():
             row['h'] = int(tx.time[:2])
+        if tx.inflow:
+            row['i'] = 1
         out.append(row)
     return out
 

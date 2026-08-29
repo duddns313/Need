@@ -238,6 +238,10 @@ summary { min-height:44px; display:flex; align-items:center; font-size:13px; col
 .tx .c { font-size:14px; overflow-wrap:anywhere; }
 .tx .a { font-size:15px; font-weight:700; letter-spacing:-.02em; white-space:nowrap; }
 .tx .meta { grid-column:1/-1; font-size:11.5px; color:var(--muted); }
+.who { display:inline-block; padding:1px 6px; border-radius:999px; font-size:10.5px;
+  font-weight:700; background:var(--chip); color:var(--ink-2); margin-right:5px;
+  vertical-align:1px; }
+.tx .a.in { color:var(--income); }
 .tx .pick { grid-column:1/-1; margin-top:7px; }
 .tx.dim .c, .tx.dim .a { color:var(--muted); }
 .drill { cursor:pointer; }
@@ -1362,9 +1366,9 @@ function drawDetail() {
     sortBy === 'amount' ? b.a - a.a : (a.d < b.d ? 1 : a.d > b.d ? -1 : 0));
   sorted.slice(0, txShown).forEach(r => {
     const tx = el('div','tx' + (natOf(r) === EXCLUDED ? ' dim' : ''),
-      `<div class="c">${esc(nameOf(r))}</div>
-       <div class="a num">${won(r.a)}</div>
-       <div class="meta">${r.d} · ${esc(r.m || '')} · ${esc(catOf(r))}${
+      `<div class="c">${whoTag(r)}${esc(nameOf(r))}</div>
+       <div class="a num${inMoney(r) ? ' in' : ''}">${signed(r)}</div>
+       <div class="meta">${inMoney(r) ? '받은 돈 · ' : ''}${r.d} · ${esc(r.m || '')} · ${esc(catOf(r))}${
          mine.cat[r.u] ? ' · 내가 고침' : ''}${isOnce(r) ? ' · 일회성' : ''}</div>`);
     const pick = el('div','pick');
     pick.appendChild(catSelect(catOf(r), val => {
@@ -1815,6 +1819,29 @@ function catSelect(current, onPick) {
   return s;
 }
 
+/* 받은 건지 낸 건지, 누구 것인지가 목록에서 안 보였다. 나간 것이 대부분이라
+   들어온 것에만 '+' 를 붙이고 색을 달리한다 — 전부에 부호를 붙이면 그게 다시
+   소음이 된다. 사람은 두 사람 파일을 같이 볼 때만 붙인다. */
+const inMoney = r => !!r.i;
+const signed = r => (r.i ? '+' : '') + won(r.a);
+const TWO = (D.owners || []).length > 1;
+const whoTag = r => TWO && r.o ? `<span class="who">${esc(r.o)}</span>` : '';
+/* 묶음(같은 이름 여럿)에 붙일 표시. 두 사람이 섞여 있으면 둘 다 적는다. */
+function whoOf(rows) {
+  if (!TWO) return '';
+  const set = [...new Set(rows.map(r => r.o).filter(Boolean))];
+  return set.length ? `<span class="who">${esc(set.join('·'))}</span>` : '';
+}
+/* 들어온 돈이 섞여 있으면 알려준다. 안 그러면 '쿠팡 79만'이 쓴 돈인지
+   환불받은 돈인지 알 수가 없다. */
+function flowOf(rows) {
+  const ins = rows.filter(inMoney), outs = rows.filter(r => !inMoney(r));
+  if (!ins.length) return '';
+  if (!outs.length) return `<span style="color:var(--income)">받은 돈</span>`;
+  return `<span style="color:var(--income)">받은 것 ${ins.length}건 ${won(
+    ins.reduce((a,r)=>a+r.a,0))}</span> 섞임`;
+}
+
 /* ── 확인해 주세요
    은행 통로로 나간 돈은 뱅샐에서 전부 한 칸에 들어온다. 내 계좌로 옮긴 것과
    남에게 부친 것이 섞여 있는데, 후자를 이체로 두면 '안 쓴 돈'이 되어 저축률이
@@ -1934,7 +1961,7 @@ function renderGuess() {
     `<b>${items.length}곳 · ${won(sum)}</b>을 짐작해 봤습니다. 맞으면 누르세요.`;
   items.slice(0, guessShown).forEach(e => {
     const item = el('div','item',
-      `<div class="top"><span class="nm2">${esc(e.content)}</span>
+      `<div class="top"><span class="nm2">${whoOf(e.rows)}${esc(e.content)}</span>
          <span class="amt num">${won(e.amount)}</span></div>
        <div class="why">${e.why}</div>
        <div class="when">${e.count}건 · ${e.rows[0].d} ~ ${e.rows[e.rows.length-1].d}</div>`);
@@ -1988,10 +2015,11 @@ function renderReview() {
     `모두 <b>${items.length}곳 · ${won(sum)}</b>입니다. 큰 것부터 봐 주세요.`));
   items.slice(0, reviewShown).forEach(e => {
     const item = el('div','item',
-      `<div class="top"><span class="nm2">${esc(e.content)}</span>
+      `<div class="top"><span class="nm2">${whoOf(e.rows)}${esc(e.content)}</span>
          <span class="amt num">${won(e.amount)}</span></div>
        <div class="why">${e.why}${e.hint ? '<br>' + e.hint : ''}</div>
-       <div class="when">${e.count}건 · ${e.rows[0].d} ~ ${e.rows[e.rows.length-1].d}</div>`);
+       <div class="when">${e.count}건 · ${e.rows[0].d} ~ ${e.rows[e.rows.length-1].d}${
+         flowOf(e.rows) ? ' · ' + flowOf(e.rows) : ''}</div>`);
     if (e.count > 1) {
       const open = el('button','chip','거래 ' + e.count + '건 보기');
       open.style.cssText = 'width:100%; margin-top:10px; min-height:40px; font-size:13px';
@@ -2060,12 +2088,13 @@ function renderList() {
     const anyOnce = rs.some(r => isOnce(r));
     const sp = SPIKES.filter(s => nameOf(s) === g.content)[0];
     const item = el('div', 'item' + (anyOnce ? ' once' : '') + (edited ? ' edited' : ''),
-      `<div class="top"><span class="nm2">${esc(g.content)}</span>
+      `<div class="top"><span class="nm2">${whoOf(rs)}${esc(g.content)}</span>
          <span class="amt num">${won(g.amount)}</span></div>
        <div class="why">${sp && sp.ratio
          ? `${esc(sp.k)} 평소 <b>${won(sp.usual)}</b>인데 이번엔 <b>${sp.ratio}배</b>`
          : `${esc(g.cat || '여러 항목')}`}</div>
-       <div class="when">${g.count}건 · ${rs[0].d} ~ ${rs[rs.length-1].d}${edited ? ' · 내가 고침' : ''}</div>`);
+       <div class="when">${g.count}건 · ${rs[0].d} ~ ${rs[rs.length-1].d}${
+         edited ? ' · 내가 고침' : ''}${flowOf(rs) ? ' · ' + flowOf(rs) : ''}</div>`);
 
     if (g.count > 1) {
       const open = el('button','chip','거래 ' + g.count + '건 보기');
